@@ -129,8 +129,9 @@ TODO more details
 Implementation Details
 ----------------------
 ### Class structure
+![](doc/exceptions.png?raw=true "State machine")
 
 ### Parser's state machine 
-![State machine](https://github.com/stefan-wolfsheimer/CSVPlusPlus/tree/master/doc/statediagram.png "State machine")
+![](doc/statediagram.png?raw=true "State machine")
 
 
