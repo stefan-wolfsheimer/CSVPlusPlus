@@ -131,5 +131,6 @@ Implementation Details
 ### Class structure
 
 ### Parser's state machine 
+![State machine](https://github.com/stefan-wolfsheimer/CSVPlusPlus/tree/master/doc/statediagram.png "State machine")
 
 
