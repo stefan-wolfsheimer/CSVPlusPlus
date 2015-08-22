@@ -129,7 +129,11 @@ TODO more details
 Implementation Details
 ----------------------
 ### Class structure
-![](doc/exceptions.png?raw=true "State machine")
+![](doc/classdiagram.png?raw=true "Class Diagram")
+TO BE COMPLETED
+
+### Exceptions
+![](doc/exceptions.png?raw=true "Exceptions")
 
 ### Parser's state machine 
 ![](doc/statediagram.png?raw=true "State machine")
