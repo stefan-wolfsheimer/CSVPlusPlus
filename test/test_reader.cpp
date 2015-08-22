@@ -32,6 +32,7 @@ either expressed or implied, of the FreeBSD Project.
 #include "catch.hpp"
 #include "csv/reader.h"
 #include <iostream>
+#include <limits>
 
 struct TestStreamResult
 {
@@ -42,18 +43,29 @@ struct TestStreamResult
   struct row_position_type
   {
     std::size_t          input_line;
+    std::size_t          row;
     column_position_type input_columns;
 
     row_position_type(std::size_t i, 
+                      std::size_t r,
                       const column_position_type & columns = 
                       column_position_type())
-      : input_line(i), input_columns(columns) 
+      : input_line(i), row(r), input_columns(columns) 
     {}
+
+    row_position_type(std::size_t i, 
+                      const column_position_type & columns = 
+                          column_position_type())
+      : input_line(i), 
+        row(::std::numeric_limits<std::size_t>::max()), 
+        input_columns(columns)
+    {}
+
 
     friend std::ostream & operator<<(std::ostream & ost, 
                                      const row_position_type & obj) 
     {
-      ost << obj.input_line << ":";
+      ost << obj.input_line << " " << obj.row << ":";
       for(auto c : obj.input_columns) 
       {
         ost << " " << c.first << "/" << c.second;
@@ -65,10 +77,12 @@ struct TestStreamResult
     bool operator==(const row_position_type & rhs) const 
     {
       return 
-        input_line == rhs.input_line && 
+        input_line    == rhs.input_line && 
+        row           == rhs.row && 
         input_columns == rhs.input_columns;
     }
   };
+
   typedef std::vector<row_position_type>           position_type;
   typedef std::vector<std::vector<std::string> >   data_type;
   data_type     result;
@@ -100,7 +114,30 @@ struct TestStreamResult
 
   bool operator==(const position_type & rhs) 
   {
-    return positions == rhs;
+    if(positions.size() != rhs.size()) 
+    {
+      return false;
+    }
+    for(std::size_t i = 0; i < rhs.size(); i++) 
+    {
+      std::size_t lhs_row = positions[i].row;
+      std::size_t rhs_row = rhs[i].row;
+      if(lhs_row == ::std::numeric_limits<std::size_t>::max()) 
+      {
+        lhs_row = i;
+      }
+      if(rhs_row == ::std::numeric_limits<std::size_t>::max()) 
+      {
+        rhs_row = i;
+      }
+      if( positions[i].input_line    != rhs[i].input_line || 
+          positions[i].input_columns != rhs[i].input_columns || 
+          lhs_row                    != rhs_row) 
+      {
+        return false;
+      }
+    }
+    return true;
   }
 
 
@@ -114,6 +151,7 @@ struct TestStreamResult
       if(i < obj.positions.size()) 
       {
         ost << obj.positions[i].input_line << " ";
+        ost << obj.positions[i].row << " ";
       }
       std::size_t j = 0;
       for(const auto & col : row) 
@@ -167,6 +205,7 @@ TestStreamResult parseStream(const std::string & str,
   {
     std::vector<std::string> row_vector;
     TestStreamResult::row_position_type rpos(row.inputLine(),
+                                             row.row(),
                                              column_position_type());
     std::size_t j = 0;
     for(auto col : row) 
@@ -441,7 +480,7 @@ TEST_CASE("ReadMatrix", "[csv_reader]")
           TestStreamResult({ 
               std::vector<std::string>{ "a1","a2","a3" },
               std::vector<std::string>{ "b1","b\n2" },
-                std::vector<std::string>{ "","","","" },
+              std::vector<std::string>{ "","","","" },
               std::vector<std::string>{ "c1","c2.1,c2.2" }
       }));
 }
@@ -661,20 +700,20 @@ TEST_CASE("InputLineCountEmptyCells", "[csv_reader]")
   typedef TestStreamResult::row_position_type    row_position_type;
   auto required = TestStreamResult::position_type{
     row_position_type(0, { 
-                           std::make_pair(0,0),
-                           std::make_pair(0,1),
-                           std::make_pair(0,2) 
-                         }),
+                            std::make_pair(0,0),
+                            std::make_pair(0,1),
+                            std::make_pair(0,2) 
+                           }),
     row_position_type(1, {
-                           std::make_pair(1,0),
-                           std::make_pair(1,1),
-                           std::make_pair(1,2) 
-                         }),
+                            std::make_pair(1,0),
+                            std::make_pair(1,1),
+                            std::make_pair(1,2) 
+                           }),
     row_position_type(3, {
-                           std::make_pair(3,0),
-                           std::make_pair(3,1),
-                           std::make_pair(3,2) 
-                         })
+                            std::make_pair(3,0),
+                            std::make_pair(3,1),
+                            std::make_pair(3,2) 
+                          })
   };
   REQUIRE(parseStream(",,\n,,\n\n,,") == required);
 }
@@ -684,15 +723,15 @@ TEST_CASE("InputLineCount", "[csv_reader]")
   typedef TestStreamResult::row_position_type    row_position_type;
   auto required = TestStreamResult::position_type{
     row_position_type(0, { 
-                           std::make_pair(0,0),
-                           std::make_pair(0,2),
-                           std::make_pair(0,5) }),
+                             std::make_pair(0,0),
+                             std::make_pair(0,2),
+                             std::make_pair(0,5) }),
     row_position_type(1, {
-                           std::make_pair(1,0)
-                         }),
+                            std::make_pair(1,0)
+                           }),
     row_position_type(2, {
-                           std::make_pair(2,0)
-                         })
+                             std::make_pair(2,0)
+                           })
   };
   REQUIRE(parseStream("a,a2,a3\nb\nc") == required);
 }
@@ -702,15 +741,15 @@ TEST_CASE("InputLineCountWithWhiteSpace", "[csv_reader]")
   typedef TestStreamResult::row_position_type    row_position_type;
   auto required = TestStreamResult::position_type{
     row_position_type(0, { 
-                           std::make_pair(0,2),
-                           std::make_pair(0,8),
-                           std::make_pair(0,15) }),
+                            std::make_pair(0,2),
+                            std::make_pair(0,8),
+                            std::make_pair(0,15) }),
     row_position_type(1, {
-                           std::make_pair(1,2)
-                         }),
+                            std::make_pair(1,2)
+                           }),
     row_position_type(2, {
-                           std::make_pair(2,1)
-                         })
+                             std::make_pair(2,1)
+                          })
   };
   REQUIRE(parseStream("  a  ,  a2  ,  a3  \n  b  \n c  \n") == required);
 }
@@ -719,12 +758,12 @@ TEST_CASE("InputLineCountWithIgnoredEmptyLines", "[csv_reader]")
 {
   typedef TestStreamResult::row_position_type row_position_type;
   auto required = TestStreamResult::position_type{
-    row_position_type(1,{
-                           std::make_pair(1,0)
-                        }),
-    row_position_type(4,{
-                           std::make_pair(4,0)
-                        }),
+    row_position_type(1, {
+                            std::make_pair(1,0)
+                           }),
+    row_position_type(4, {
+                             std::make_pair(4,0)
+                         }),
     row_position_type(5,{
                            std::make_pair(5,0)
                         })

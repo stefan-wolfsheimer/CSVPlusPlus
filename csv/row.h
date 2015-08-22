@@ -88,7 +88,7 @@ namespace csv
     inline const cell_type & operator[](const string_type & name) const ;
     
     inline ::std::size_t inputLine() const        { return _input_line; }
-    inline ::std::size_t rowLine() const          { return _input_line; }
+    inline ::std::size_t row() const              { return _row; }
 
   private:
     friend class BasicReader<char_type, char_traits>;
@@ -101,6 +101,7 @@ namespace csv
     shared_spec_type                                   _shared_spec;
     shared_buffer_type                                 _shared_buffer;
     ::std::size_t                                      _input_line;
+    ::std::size_t                                      _row;
     cell_vector_type                                   _cells;
 
     ::std::size_t initColumn(const char_type * str, 
@@ -130,6 +131,7 @@ namespace csv
       : _shared_spec(rhs._shared_spec),
         _shared_buffer(rhs._shared_buffer),
         _input_line(rhs._input_line),
+        _row(rhs._row),
         _cells(rhs._cells)
   {}
 
@@ -139,6 +141,7 @@ namespace csv
     : _shared_spec(rhs._shared_spec),
       _shared_buffer(rhs._shared_buffer),
       _input_line(rhs._input_line),
+      _row(rhs._row),
       _cells(::std::move(rhs._cells))
   {}
 
@@ -146,25 +149,29 @@ namespace csv
   BasicRow<CHAR,TRAITS>::BasicRow()
     : _shared_spec(::std::make_shared<spec_type>()),
       _shared_buffer(::std::make_shared<buffer_type>()),
-      _input_line(0)
+      _input_line(0),
+      _row(0)
   {}
   template<typename CHAR, typename TRAITS>
   BasicRow<CHAR,TRAITS>::BasicRow(const spec_type & spec)
     : _shared_spec(::std::make_shared<spec_type>(spec)),
       _shared_buffer(::std::make_shared<buffer_type>()),
-      _input_line(0)
+      _input_line(0),
+      _row(0)
   {}
   template<typename CHAR, typename TRAITS>
   BasicRow<CHAR,TRAITS>::BasicRow(const shared_spec_type & spec)
     : _shared_spec(spec),
       _shared_buffer(::std::make_shared<buffer_type>()),
-      _input_line(0)
+      _input_line(0),
+      _row(0)
   {}
   template<typename CHAR, typename TRAITS>
     template<typename C>
   BasicRow<CHAR,TRAITS>::BasicRow(const C & container) 
     : _shared_spec(::std::make_shared<spec_type>()),
-      _input_line(0)
+      _input_line(0),
+      _row(0)
   {
     auto begin = std::begin(container);
     auto end   = std::end(container);
@@ -176,7 +183,8 @@ namespace csv
     template<typename C>
   BasicRow<CHAR,TRAITS>::BasicRow(const C & container, const spec_type & spec) 
     : _shared_spec(::std::make_shared<spec_type>(spec)),
-      _input_line(0)
+      _input_line(0),
+      _row(0)
   {
     auto begin = std::begin(container);
     auto end   = std::end(container);
@@ -190,7 +198,8 @@ namespace csv
   BasicRow<CHAR,TRAITS>::BasicRow(const C & container, 
                                   const shared_spec_type & spec) 
     : _shared_spec(spec),
-      _input_line(0)
+      _input_line(0),
+      _row(0)
   {
     auto begin = std::begin(container);
     auto end   = std::end(container);

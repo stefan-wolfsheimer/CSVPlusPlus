@@ -14,7 +14,7 @@ HEADER=	../csv/csv_common.h \
 		    ../csv/row.h \
 		    ../csv/reader.h
 
-all: ${SRC} ${HEADER} benchmark.cpp
+all: ${SRC} ${HEADER} 
 	${CXX} ${CXXFLAGS} ${INCLUDE} ${SRC} -o runtest
 
-# ${CXX} ${CXXFLAGS} ${INCLUDE} benchmark.cpp -o benchmark
+

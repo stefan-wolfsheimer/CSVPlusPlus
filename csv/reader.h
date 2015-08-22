@@ -122,6 +122,8 @@ namespace csv
     ::std::size_t                                 _last_cell_input_line;
     ::std::size_t                                 _last_cell_input_column;
     ::std::size_t                                 _csv_row;
+    ::std::size_t                                 _buffer_csv_row;
+    ::std::size_t                                 _last_buffer_csv_row;
     ::std::size_t                                 _csv_column;
 
     inline bool isWhiteSpace(int ch);
@@ -196,6 +198,7 @@ namespace csv
         row._shared_buffer        = reader->_last_buffer; 
         row._cells                = reader->_last_cells;
         row._input_line           = reader->_flushed_input_line;
+        row._row                  = reader->_last_buffer_csv_row;
         reader->_has_been_flushed = false;
       }
       else if(reader->_state == BasicReader::State::END) 
@@ -246,6 +249,8 @@ namespace csv
     _last_cell_input_line     = 0;
     _last_cell_input_column   = 0;
     _csv_row                  = 0;
+    _buffer_csv_row           = 0;
+    _last_buffer_csv_row      = 0;
     _csv_column               = 0;
 
     _state                    = State::START;
@@ -287,12 +292,14 @@ namespace csv
   {
     if( _is_end_of_row ) 
     {
-      _last_buffer        = _buffer;
-      _last_cells         = _cells;
-      _flushed_input_line = _last_input_line;
-      _buffer             = std::make_shared<buffer_type>();
-      _has_been_flushed   = true;
-      _is_end_of_row      = false;
+      _last_buffer         = _buffer;
+      _last_buffer_csv_row = _buffer_csv_row;
+      _last_cells          = _cells;
+      _flushed_input_line  = _last_input_line;
+      _buffer              = std::make_shared<buffer_type>();
+      _buffer_csv_row      = _csv_row;
+      _has_been_flushed    = true;
+      _is_end_of_row       = false;
       _cells.clear();
     }
   }
