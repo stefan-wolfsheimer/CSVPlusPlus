@@ -300,7 +300,7 @@ namespace csv
     {
       ::std::type_index ti(typeid(TARGET));
       throw 
-        ConversionError(::std::string("Cannot convert cell to type ") + 
+        ConversionError(::std::string("Cannot convert cell content ") + 
                         ti.name(),
                         ti,
                         cell.inputLine(),

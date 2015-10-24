@@ -29,9 +29,13 @@ of the authors and should not be interpreted as representing official policies,
 either expressed or implied, of the FreeBSD Project.
 ******************************************************************************/
 
+#include <string>
+#include <sstream>
+#include <vector>
+
 #include "csv/specification.h"
 #include "csv/reader.h"
-#include <sstream>
+
 /* planet data from wikipedia:
 http://en.wikipedia.org/wiki/Planet
 */
@@ -48,19 +52,65 @@ R"--(
      8,      Neptune,  3.883,    17.2,  164.8,             0.67	
 )--";
 
+struct Planet
+{
+  int         index;
+  std::string name;
+  float       diameter;
+  float       mass;
+  float       orbital_period;
+  float       rotation_period;
+};
+
+Planet parsePlanet(csv::Row row) 
+{
+  return Planet 
+  {
+    index           : row["Number"].as<int>(),
+    name            : row["Name"].as<std::string>(),
+    diameter        : row["Diameter"].as<float>(),
+    mass            : row["Mass"].as<float>(),
+    orbital_period  : row["Orbital period"].as<float>(),
+    rotation_period : row["Rotation period"].as<float>()
+  };
+}
+
+std::vector<Planet> readPlanetList(csv::Reader reader)
+{
+  std::vector<Planet> ret;
+  for(auto row : reader) 
+  {
+    ret.push_back(parsePlanet(row));
+  }
+  return ret;
+}
+
 int main(int argc, const char ** argv)
 {
+
   std::stringstream ist(planets_csv);
   csv::Reader reader(ist,
                      csv::Specification().withHeader());
-  for(auto row : reader) 
+  auto planets = readPlanetList(reader);
+  Planet avg = Planet
   {
-    for(auto cell : row) 
-    {
-      std::cout << cell.row() << ":" << cell.column();
-      std::cout << "[" << cell.name() << "]";
-      std::cout << "=" << cell.as<std::string>() << std::endl;
-    }
+    index           : 0,
+    name            : "avg",
+    diameter        : 0,
+    mass            : 0,
+    orbital_period  : 0,
+    rotation_period : 0
+  };
+  for(auto planet : planets) 
+  {
+    avg.diameter+=        planet.diameter / planets.size();
+    avg.mass+=            planet.mass / planets.size();
+    avg.orbital_period+=  fabs(planet.orbital_period) / planets.size();
+    avg.rotation_period+= fabs(planet.rotation_period) / planets.size();
   }
+  std::cout << "avg diameter        " << avg.diameter << std::endl;
+  std::cout << "avg mass            " << avg.mass << std::endl;
+  std::cout << "avg orbital_period  " << avg.orbital_period << std::endl;
+  std::cout << "avg rotation_period " << avg.rotation_period << std::endl;
   return 0;
 }
