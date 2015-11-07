@@ -104,6 +104,12 @@ namespace csv
     ::std::size_t                                      _row;
     cell_vector_type                                   _cells;
 
+    BasicRow(shared_spec_type shared_spec, 
+             shared_buffer_type shared_buffer,
+             ::std::size_t      input_line,
+             ::std::size_t      row,
+             cell_vector_type   cells);
+
     ::std::size_t initColumn(const char_type * str, 
                              ::std::size_t       j, 
                              buffer_type *     _tmp_buffer);
@@ -151,7 +157,10 @@ namespace csv
       _shared_buffer(::std::make_shared<buffer_type>()),
       _input_line(0),
       _row(0)
-  {}
+  {
+  }
+
+
   template<typename CHAR, typename TRAITS>
   BasicRow<CHAR,TRAITS>::BasicRow(const spec_type & spec)
     : _shared_spec(::std::make_shared<spec_type>(spec)),
@@ -207,6 +216,21 @@ namespace csv
     typedef typename iterator_traits::iterator_category iterator_category;
     init(begin, end, iterator_category());
   }
+
+  template<typename CHAR, typename TRAITS>
+  BasicRow<CHAR,TRAITS>::BasicRow(shared_spec_type   shared_spec, 
+                                  shared_buffer_type shared_buffer,
+                                  ::std::size_t      input_line,
+                                  ::std::size_t      row,
+                                  cell_vector_type   cells) 
+    : _shared_spec(shared_spec),
+      _shared_buffer(shared_buffer),
+      _input_line(input_line),
+      _row(row),
+      _cells(cells) 
+  {}
+                   
+  
 
   template<typename CHAR, typename TRAITS>
   BasicRow<CHAR,TRAITS> & 

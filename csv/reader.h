@@ -104,7 +104,6 @@ namespace csv
     char_type                                     _quote;
 
     // buffer
-    row_type                                      _current_row;
     shared_buffer_type                            _last_buffer;
     shared_buffer_type                            _buffer;
     ::std::vector<cell_type>                      _last_cells;
@@ -156,12 +155,13 @@ namespace csv
   // iterator
   template<typename CHAR, typename TRAITS>
   BasicReader<CHAR,TRAITS>::iterator::iterator(BasicReader * _reader) 
-    : reader(_reader) 
+    : reader(_reader),
+      row(reader->_specs,
+          reader->_last_buffer,
+          reader->_last_input_line,
+          reader->_last_buffer_csv_row,
+          reader->_last_cells)
   {
-    row._shared_spec   = reader->_specs;
-    row._shared_buffer = reader->_last_buffer;
-    row._cells         = reader->_last_cells;
-    row._input_line    = reader->_last_input_line;
     ++*this;
   }
 
@@ -178,9 +178,13 @@ namespace csv
   { 
     return &row; 
   }
-
+  
   template<typename CHAR, typename TRAITS>
   BasicReader<CHAR,TRAITS>::iterator::iterator() 
+    : row(shared_spec_type(), 
+          shared_buffer_type(),
+          0,0,::std::vector<cell_type>())
+
   {
     reader = 0;
   }
