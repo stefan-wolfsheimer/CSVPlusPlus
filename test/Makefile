@@ -17,4 +17,7 @@ HEADER=	../csv/csv_common.h \
 all: ${SRC} ${HEADER} 
 	${CXX} ${CXXFLAGS} ${INCLUDE} ${SRC} -o runtest
 
+benchmark: benchmark.cpp ${HEADER}
+	${CXX} ${CXXFLAGS} ${INCLUDE} benchmark.cpp -o benchmark
+
 
