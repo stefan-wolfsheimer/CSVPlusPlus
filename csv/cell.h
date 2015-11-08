@@ -46,16 +46,34 @@ namespace csv
     typedef TRAITS                                          char_traits;
     typedef TARGET                                          return_type;
     typedef std::basic_string<char_type, char_traits>       string_type;
-    typedef std::basic_stringstream<char_type, char_traits> stream_type;
     typedef BasicSpecification<char_type, char_traits>      spec_type;    
     typedef std::shared_ptr<spec_type>                      shared_spec_type;
     typedef BasicCell<char_type, char_traits>               cell_type;
-
+    typedef typename std::vector<char_type>::const_iterator const_iterator;
 
     template<typename ITER>
-    static return_type as(const cell_type        & cell,
-                          ITER                     begin, 
-                          ITER                     end);
+    static return_type as(const cell_type & cell,
+                          ITER              begin, 
+                          ITER              end);
+  private:
+    template<typename ITER>
+    class Buffer : public std::basic_streambuf<char_type, char_traits>
+    {
+    public:
+      Buffer(const_iterator begin, const_iterator end);
+      typedef std::basic_streambuf<char_type, char_traits> stream_buf_type;
+      typedef typename stream_buf_type::int_type           int_type;
+      typedef typename stream_buf_type::traits_type        traits_type;
+    private:
+      const_iterator _begin;
+      const_iterator _end;
+      const_iterator _current;
+
+      int_type underflow() override;
+      int_type uflow() override;
+      int_type pbackfail(int_type ch);
+      std::streamsize showmanyc();
+    };
   };
 
   template<typename CHAR, typename TRAITS>
@@ -284,15 +302,15 @@ namespace csv
   }
 
 
-
   template<typename CHAR, typename TRAITS, typename TARGET>
   template<typename ITER>
   typename BasicSerializer<CHAR, TRAITS, TARGET>::return_type
-  BasicSerializer<CHAR, TRAITS, TARGET>::as(const cell_type        & cell,
-                                            ITER                     begin, 
-                                            ITER                     end)
+  BasicSerializer<CHAR, TRAITS, TARGET>::as(const cell_type & cell,
+                                            ITER              begin,
+                                            ITER              end)
   {
-    stream_type ss(string_type(begin,end));
+    Buffer<ITER> buffer(begin, end);
+    ::std::basic_istream<char_type, char_traits> ss(&buffer);
     return_type value;
     ss.imbue(cell.specification()->locale());
     ss >> value;
@@ -328,6 +346,72 @@ namespace csv
     return value;
   }
 
+  template<typename CHAR, typename TRAITS, typename TARGET>
+  template<typename ITER>
+  BasicSerializer<CHAR, TRAITS, TARGET>::Buffer<ITER>::Buffer(const_iterator begin, const_iterator end) 
+    : _begin(begin), _end(end), _current(begin)
+  { }
+
+  template<typename CHAR, typename TRAITS, typename TARGET>
+  template<typename ITER>
+  typename std::basic_streambuf<CHAR,TRAITS>::int_type
+  BasicSerializer<CHAR, TRAITS, TARGET>::Buffer<ITER>::underflow()
+  {
+    if (_current == _end)
+    {
+      return traits_type::eof();
+    }
+    else 
+    {
+      return traits_type::to_int_type(*_current);
+    }
+  }
+
+  template<typename CHAR, typename TRAITS, typename TARGET>
+  template<typename ITER>
+  typename std::basic_streambuf<CHAR,TRAITS>::int_type
+  BasicSerializer<CHAR, TRAITS, TARGET>::Buffer<ITER>::uflow() 
+  {
+    if (_current == _end)
+    {
+      return traits_type::eof();
+    }
+    else 
+    {
+      return traits_type::to_int_type(*_current++);
+    }
+  }
+
+  template<typename CHAR, typename TRAITS, typename TARGET>
+  template<typename ITER>
+  typename std::basic_streambuf<CHAR,TRAITS>::int_type
+  BasicSerializer<CHAR, TRAITS, TARGET>::Buffer<ITER>::pbackfail(int_type ch)
+  {
+    // if a different char is put back -> eof (buffer is readonly)
+    if (_current == _begin || (ch != traits_type::eof() && ch != _current[-1]))
+    {
+      return traits_type::eof();
+    }
+    else 
+    {
+      return traits_type::to_int_type(*--_current);
+    }
+  }
+
+     
+  template<typename CHAR, typename TRAITS, typename TARGET>
+  template<typename ITER>
+  ::std::streamsize BasicSerializer<CHAR, TRAITS, TARGET>::Buffer<ITER>::showmanyc()
+  {
+    return _end - _current;
+  }
+
+
+  //////////////////////////////////////////////////////////////////////
+  //
+  // String serializer 
+  //
+  //////////////////////////////////////////////////////////////////////
   template<typename CHAR, typename TRAITS>
   template<typename ITER>
   typename 
