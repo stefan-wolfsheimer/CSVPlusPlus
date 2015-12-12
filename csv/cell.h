@@ -109,38 +109,108 @@ namespace csv
   private:
     friend class BasicRow<char_type, char_traits>;
     friend class BasicReader<char_type, char_traits>;
-    struct range_type
-    {
-      ::std::size_t _begin;
-      ::std::size_t _end;
-      ::std::size_t _csv_row;
-      ::std::size_t _csv_column;
-      ::std::size_t _input_line;
-      ::std::size_t _input_column;
 
-      range_type(::std::size_t begin,
-                 ::std::size_t end,
-                 ::std::size_t csv_row      = 0,
-                 ::std::size_t csv_column   = 0,
-                 ::std::size_t input_line   = 0,
-                 ::std::size_t input_column = 0);
+    //typedef typename char_traits::to_int_type  int_type;
+    /* Todo: use traits */
+    typedef int int_type;
+
+    struct CellRange
+    {
+      ::std::size_t _begin_buffer;
+      ::std::size_t _end_buffer;
+      ::std::size_t _begin_input_line;
+      ::std::size_t _begin_input_column;
+
+      CellRange() : 
+        _begin_buffer(0),
+        _end_buffer(0),
+        _begin_input_line(0),
+        _begin_input_column(0) {}
+
+      CellRange(std::size_t begin,
+                std::size_t end) : 
+        _begin_buffer(begin),
+        _end_buffer(end),
+        _begin_input_line(0),
+        _begin_input_column(0) {}
+
     };
-    typedef std::vector<char_type>                     buffer_type;
+
+    struct Buffer 
+    {
+      ::std::size_t                _begin_input_line;  
+      ::std::size_t                _csv_row;           
+      ::std::vector<int_type>      _buffer;
+      ::std::vector<CellRange>     _ranges;
+      CellRange                    _current_range;
+
+
+      Buffer(::std::size_t begin_input_line,
+             ::std::size_t csv_row) 
+        : _begin_input_line(begin_input_line),
+          _csv_row(csv_row)
+      {
+      }
+      
+      inline void addCell(::std::size_t input_line, ::std::size_t input_column) 
+      {
+        _current_range._begin_buffer       = _buffer.size();
+        _current_range._end_buffer         = _current_range._begin_buffer;
+        _current_range._begin_input_line   = input_line;
+        _current_range._begin_input_column = input_column;
+      }
+
+      inline void flushCell() 
+      {
+        _current_range._end_buffer = _buffer.size();
+      }
+
+      inline void revertCell() 
+      {
+        _buffer.resize(_current_range._end_buffer);
+        //_buffer[_current_range._end_buffer] = char_traits::eof();
+        //_ranges.push_back(_current_range);
+      }
+
+      inline void closeCell()
+      {
+        _current_range._end_buffer = _buffer.size();
+        _buffer.push_back(char_traits::eof());
+        _ranges.push_back(_current_range);
+      }
+
+      inline void addChar(int_type ch)
+      {
+        _buffer.push_back(ch);
+      }
+
+      inline void clear(::std::size_t begin_input_line,
+                        ::std::size_t csv_row) 
+      {
+        _buffer.clear();
+        _ranges.clear();
+        _begin_input_line = begin_input_line;
+        _csv_row = csv_row;
+      }
+    };
+    typedef Buffer                                     buffer_type;
     typedef std::shared_ptr<buffer_type>               shared_buffer_type;
-    typedef typename buffer_type::const_iterator       buffer_iterator;
     typedef typename spec_type::Column                 column_type;
     typedef std::shared_ptr<column_type>               shared_column_type;
-
-    shared_spec_type                                   _specs;
-    shared_column_type                                 _shared_column;
-    shared_buffer_type                                 _shared_buffer;
-    range_type                                         _range;
 
     BasicCell(const shared_spec_type       & specs,
               const shared_column_type     & column_specs,
               const shared_buffer_type     & buffer,
-              const range_type             & range );
+              std::size_t                    index);
+
     static buffer_type * string2buffer(const string_type & str);
+
+
+    shared_spec_type                                   _specs;
+    shared_column_type                                 _shared_column;
+    shared_buffer_type                                 _shared_buffer;
+    ::std::size_t                                      _buffer_index;
+    static const std::size_t                           _npos = 100000; /* Todo: trait */
   };
 
   ////////////////////////////////////////////////////////////////////
@@ -153,8 +223,8 @@ namespace csv
   BasicCell<CHAR,TRAITS>::BasicCell(spec_type specs) 
     : _specs(std::make_shared<spec_type>(specs)),
       _shared_column(std::make_shared<column_type>(0,string_type())),
-      _shared_buffer(std::make_shared<buffer_type>()),
-      _range(range_type(0,0))
+      _shared_buffer(std::make_shared<buffer_type>(0,0)),
+      _buffer_index(_npos)
   {
   }
 
@@ -166,7 +236,7 @@ namespace csv
     : _specs(std::make_shared<spec_type>(specs)),
       _shared_column(std::make_shared<column_type>(0,name)),
       _shared_buffer(string2buffer(str)),
-      _range(range_type(0,_shared_buffer->size()))
+      _buffer_index(0)
   {
   }
 
@@ -178,7 +248,7 @@ namespace csv
     : _specs(std::make_shared<spec_type>()),
       _shared_column(std::make_shared<column_type>(0,name)),
       _shared_buffer(string2buffer(str)),
-      _range(range_type(0,_shared_buffer->size()))
+      _buffer_index(0)
     {
     }
 
@@ -188,19 +258,20 @@ namespace csv
     : _specs(rhs._specs),
       _shared_column(rhs._shared_column),
       _shared_buffer(rhs._shared_buffer),
-      _range(rhs._range) 
+      _buffer_index(rhs._buffer_index)
     {}
+
 
   template<typename CHAR, typename TRAITS> 
   inline
   BasicCell<CHAR,TRAITS>::BasicCell(const shared_spec_type     & specs,
                                     const shared_column_type   & column_specs,
                                     const shared_buffer_type   & buffer,
-                                    const range_type           & range )
+                                    std::size_t                  pos )
     : _specs(specs),
       _shared_column(column_specs),
       _shared_buffer(buffer),
-      _range(range) 
+      _buffer_index(pos)
   {
   }
 
@@ -209,12 +280,19 @@ namespace csv
   inline RET 
   BasicCell<CHAR,TRAITS>::as() const 
   {
+    // Todo: throw exception if _buffer_index out of range
     return 
       BasicSerializer<char_type, 
                       char_traits,
                       RET>::as(*this, 
-                               _shared_buffer->begin() + _range._begin,
-                               _shared_buffer->begin() + _range._end );
+                               
+                               _shared_buffer->_buffer.begin() + 
+                               _shared_buffer->_ranges[_buffer_index].
+                               _begin_buffer,
+                               
+                               _shared_buffer->_buffer.begin() + 
+                               _shared_buffer->_ranges[_buffer_index].
+                               _end_buffer);
   }
 
   template<typename CHAR, typename TRAITS>
@@ -227,25 +305,26 @@ namespace csv
   template<typename CHAR, typename TRAITS>
   inline ::std::size_t BasicCell<CHAR,TRAITS>::inputColumn() const 
   {
-    return _range._input_column;
+    //Todo: check range
+    return _shared_buffer->_ranges[_buffer_index]._begin_input_column;
   }
 
   template<typename CHAR, typename TRAITS>
   inline ::std::size_t BasicCell<CHAR,TRAITS>::inputLine() const 
   {
-    return _range._input_line;
+    return _shared_buffer->_ranges[_buffer_index]._begin_input_line;
   }
 
   template<typename CHAR, typename TRAITS>
   inline ::std::size_t BasicCell<CHAR,TRAITS>::row() const
   {
-    return _range._csv_row;
+    return _shared_buffer->_csv_row;
   }
 
   template<typename CHAR, typename TRAITS>
   inline ::std::size_t BasicCell<CHAR,TRAITS>::column() const
   {
-    return _range._csv_column;
+    return _buffer_index;
   }
 
   template<typename CHAR, typename TRAITS>
@@ -256,30 +335,16 @@ namespace csv
   }
 
   template<typename CHAR, typename TRAITS>
-  BasicCell<CHAR,TRAITS>::range_type::range_type(::std::size_t begin,
-                                                 ::std::size_t end,
-                                                 ::std::size_t csv_row,
-                                                 ::std::size_t csv_column,
-                                                 ::std::size_t input_line,
-                                                 ::std::size_t input_column )
-        : _begin(begin), 
-          _end(end),
-          _csv_row(csv_row),
-          _csv_column(csv_column),
-          _input_line(input_line),
-          _input_column(input_column)
-      {}
-
-  template<typename CHAR, typename TRAITS>
   typename BasicCell<CHAR,TRAITS>::buffer_type * 
   BasicCell<CHAR,TRAITS>::string2buffer(const string_type & str) 
   {
-    buffer_type * ret = new buffer_type;
-    ret->reserve(str.size());
+    buffer_type * ret = new buffer_type(0,0);
+    ret->_buffer.reserve(str.size());
     for(auto itr : str) 
     {
-      ret->push_back(itr);
+      ret->_buffer.push_back(itr);
     }
+    ret->_ranges.push_back(CellRange(0,str.size()));
     return ret;
   }
 

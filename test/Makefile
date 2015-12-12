@@ -1,5 +1,11 @@
-SRC=test_row.cpp \
-	  test_cell.cpp \
+# SRC= \
+# 	  test_cell.cpp \
+# 	  test_reader.cpp \
+# 	  test_specification.cpp \
+# 	  runtest.cpp 
+
+SRC=test_cell.cpp \
+	  test_row.cpp	\
 	  test_reader.cpp \
 	  test_specification.cpp \
 	  runtest.cpp 

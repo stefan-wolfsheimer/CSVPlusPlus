@@ -74,7 +74,7 @@ namespace csv
     BasicRow & operator=(const BasicRow & rhs);
     BasicRow & operator=(const BasicRow && rhs);
 
-    inline std::size_t size() const               { return _cells.size();    }
+    inline std::size_t size() const               { return _shared_buffer->_ranges.size();    }
     inline const_iterator begin() const           { return _cells.begin();   }
     inline const_iterator end() const             { return _cells.end();     }
     inline const_iterator cbegin() const          { return _cells.cbegin();  }
@@ -87,21 +87,19 @@ namespace csv
     inline const cell_type & operator[](std::size_t i) const;
     inline const cell_type & operator[](const string_type & name) const ;
     
-    inline ::std::size_t inputLine() const        { return _input_line; }
-    inline ::std::size_t row() const              { return _row; }
-
+    inline ::std::size_t inputLine() const        { return _shared_buffer->_begin_input_line; }
+    inline ::std::size_t row() const              { return _shared_buffer->_csv_row; }
+    inline void clear(::std::size_t begin_input_line = 0,
+                      ::std::size_t csv_row = 0);
   private:
     friend class BasicReader<char_type, char_traits>;
     typedef typename cell_type::buffer_type            buffer_type;
     typedef typename cell_type::shared_buffer_type     shared_buffer_type;
-    typedef typename cell_type::range_type             range_type;
     typedef typename ::std::vector<cell_type>          cell_vector_type;
     typedef typename spec_type::Column                 column_type;
     typedef typename ::std::shared_ptr<column_type>    shared_column_type;
     shared_spec_type                                   _shared_spec;
     shared_buffer_type                                 _shared_buffer;
-    ::std::size_t                                      _input_line;
-    ::std::size_t                                      _row;
     cell_vector_type                                   _cells;
 
     ::std::size_t initColumn(const char_type * str, 
@@ -113,12 +111,12 @@ namespace csv
 
     template<typename ITER>
     void init(const ITER & begin, const ITER & end, std::forward_iterator_tag);
-
-    inline 
-    void getLastRowColumnInputColumn(::std::size_t & csv_row,
-                                     ::std::size_t & csv_column,
-                                     ::std::size_t & input_column) const;
-
+    typedef int int_type; //Todo: char traits
+    inline void closeCell();
+    inline void addCell(::std::size_t input_row, ::std::size_t input_column);
+    inline void addChar(int_type ch);
+    inline void flushCell();
+    inline void revertCell();
   };
 
   //////////////////////////////////////////////////////////////////////
@@ -130,8 +128,6 @@ namespace csv
   BasicRow<CHAR,TRAITS>::BasicRow(const BasicRow<char_type, char_traits> & rhs)
       : _shared_spec(rhs._shared_spec),
         _shared_buffer(rhs._shared_buffer),
-        _input_line(rhs._input_line),
-        _row(rhs._row),
         _cells(rhs._cells)
   {}
 
@@ -140,38 +136,30 @@ namespace csv
                                   rhs)
     : _shared_spec(rhs._shared_spec),
       _shared_buffer(rhs._shared_buffer),
-      _input_line(rhs._input_line),
-      _row(rhs._row),
       _cells(::std::move(rhs._cells))
   {}
 
   template<typename CHAR, typename TRAITS>
   BasicRow<CHAR,TRAITS>::BasicRow()
     : _shared_spec(::std::make_shared<spec_type>()),
-      _shared_buffer(::std::make_shared<buffer_type>()),
-      _input_line(0),
-      _row(0)
+      _shared_buffer(::std::make_shared<buffer_type>(0,0))
   {}
+
   template<typename CHAR, typename TRAITS>
   BasicRow<CHAR,TRAITS>::BasicRow(const spec_type & spec)
     : _shared_spec(::std::make_shared<spec_type>(spec)),
-      _shared_buffer(::std::make_shared<buffer_type>()),
-      _input_line(0),
-      _row(0)
+      _shared_buffer(::std::make_shared<buffer_type>())
   {}
+
   template<typename CHAR, typename TRAITS>
   BasicRow<CHAR,TRAITS>::BasicRow(const shared_spec_type & spec)
     : _shared_spec(spec),
-      _shared_buffer(::std::make_shared<buffer_type>()),
-      _input_line(0),
-      _row(0)
+      _shared_buffer(::std::make_shared<buffer_type>())
   {}
   template<typename CHAR, typename TRAITS>
     template<typename C>
   BasicRow<CHAR,TRAITS>::BasicRow(const C & container) 
-    : _shared_spec(::std::make_shared<spec_type>()),
-      _input_line(0),
-      _row(0)
+    : _shared_spec(::std::make_shared<spec_type>())
   {
     auto begin = std::begin(container);
     auto end   = std::end(container);
@@ -182,9 +170,7 @@ namespace csv
   template<typename CHAR, typename TRAITS>
     template<typename C>
   BasicRow<CHAR,TRAITS>::BasicRow(const C & container, const spec_type & spec) 
-    : _shared_spec(::std::make_shared<spec_type>(spec)),
-      _input_line(0),
-      _row(0)
+    : _shared_spec(::std::make_shared<spec_type>(spec))
   {
     auto begin = std::begin(container);
     auto end   = std::end(container);
@@ -197,9 +183,7 @@ namespace csv
   template<typename C>
   BasicRow<CHAR,TRAITS>::BasicRow(const C & container, 
                                   const shared_spec_type & spec) 
-    : _shared_spec(spec),
-      _input_line(0),
-      _row(0)
+    : _shared_spec(spec)
   {
     auto begin = std::begin(container);
     auto end   = std::end(container);
@@ -215,7 +199,6 @@ namespace csv
     _shared_spec   = rhs._shared_spec;
     _shared_buffer = rhs._shared_buffer;
     _cells         = rhs._cells;
-    _input_line    = rhs._input_line;
     return *this;
   }
 
@@ -225,50 +208,40 @@ namespace csv
   {
     _shared_buffer = ::std::move(rhs._shared_buffer);
     _cells         = ::std::move(rhs._cells);
-    _input_line    = rhs._input_line;
     return *this;
   }
+
   template<typename CHAR, typename TRAITS>
-  inline void BasicRow<CHAR,TRAITS>::
-  getLastRowColumnInputColumn(::std::size_t & csv_row,
-                              ::std::size_t & csv_column,
-                              ::std::size_t & input_column) const
+  inline void BasicRow<CHAR,TRAITS>::clear(::std::size_t begin_input_line,
+                                           ::std::size_t csv_row) 
   {
-    if(_cells.empty()) 
+    _cells.clear();
+    if(_shared_buffer.use_count() > 1) 
     {
-      input_column = 0;
-      csv_row = 0;
-      csv_column = 0;
+      // Copy on write
+      _shared_buffer.reset(new buffer_type(begin_input_line, csv_row));
     }
     else 
     {
-      input_column = _cells.back()._range._input_column;
-      csv_row      = _cells.back()._range._csv_row;
-      csv_column   = _cells.back()._range._csv_column;
+      _shared_buffer->clear(begin_input_line, csv_row);
     }
   }
-
+  
   template<typename CHAR, typename TRAITS>
   const typename BasicRow<CHAR,TRAITS>::cell_type & 
   BasicRow<CHAR,TRAITS>::operator[](std::size_t i) const
   {
-    if(i >= _cells.size()) 
+    if(i >= _cells.size())
     {
-      ::std::size_t         csv_row;
-      ::std::size_t         csv_column;
-      ::std::size_t         input_column;
-      getLastRowColumnInputColumn(csv_row, 
-                                  csv_column, 
-                                  input_column);
       throw CellOutOfRangeError("Cell index " + ::std::to_string(i) + 
                                 " out of range [0," + 
                                 ::std::to_string(_cells.size()) + ")",
                                 i,
                                 _cells.size(),
-                                inputLine(),
-                                input_column,
-                                csv_row,
-                                csv_column);
+                                _shared_buffer->_begin_input_line,
+                                0, /*input_column, */
+                                _shared_buffer->_csv_row,
+                                0  /*csv_column */);
     }
     else 
     {
@@ -283,35 +256,25 @@ namespace csv
     auto itr = _shared_spec->_lookup.find(name);
     if(itr == _shared_spec->_lookup.end())
     {
-      ::std::size_t         csv_row;
-      ::std::size_t         csv_column;
-      ::std::size_t         input_column;
-      getLastRowColumnInputColumn(csv_row, csv_column, input_column);
-      throw 
-        UndefinedColumnError("Accessing undefined column by name.",
-                             _cells.size(),
-                             inputLine(),
-                             input_column,
-                             csv_row,
-                             csv_column);
+      throw UndefinedColumnError("Accessing undefined column by name.",
+                                 _cells.size(),
+                                 _shared_buffer->_begin_input_line,
+                                 0, /* input_column, */
+                                 _shared_buffer->_csv_row,
+                                 0  /* csv_column*/ );
     }
     else 
     {
       std::size_t i = itr->second->index();
       if(i >= _cells.size()) 
       {
-        ::std::size_t         csv_row;
-        ::std::size_t         csv_column;
-        ::std::size_t         input_column;
-        getLastRowColumnInputColumn(csv_row, csv_column, input_column);
-        throw 
-          DefinedCellOutOfRangeError("Named column out of range.",
-                                     i,
-                                     _cells.size(),
-                                     inputLine(),
-                                     input_column,
-                                     csv_row,
-                                     csv_column);
+        throw DefinedCellOutOfRangeError("Named column out of range.",
+                                         i,
+                                         _cells.size(),
+                                         _shared_buffer->_begin_input_line,
+                                         0, /* input_column,*/
+                                         _shared_buffer->_csv_row,
+                                         0 /*csv_column*/ );
       }
       else 
       {
@@ -328,7 +291,7 @@ namespace csv
   {
     while(*str) 
     {
-      _tmp_buffer->push_back(*str);
+      _tmp_buffer->addChar(*str);
       ++str;
       ++j;
     }
@@ -343,11 +306,47 @@ namespace csv
   {
     for(auto itr = str.begin(); itr != str.end(); ++itr) 
     {
-      _tmp_buffer->push_back(*itr);
+      _tmp_buffer->addChar(*itr);
       ++j;
     }
     return j;
   }
+
+  template<typename CHAR, typename TRAITS>
+  inline void BasicRow<CHAR,TRAITS>::addCell(::std::size_t input_row, ::std::size_t input_column )
+  {
+    _shared_buffer->addCell(input_row,input_column);
+  }
+
+  template<typename CHAR, typename TRAITS>
+  inline void BasicRow<CHAR,TRAITS>::addChar(int_type ch )
+  {
+    _shared_buffer->addChar(ch);
+  }
+
+
+  template<typename CHAR, typename TRAITS>
+  inline void BasicRow<CHAR,TRAITS>::closeCell()
+  {
+    _shared_buffer->closeCell();
+    _cells.push_back(cell_type(_shared_spec,
+                               _shared_spec->addColumnIfNotExists(_cells.size()),
+                               _shared_buffer,
+                               _cells.size()));
+  }
+
+  template<typename CHAR, typename TRAITS>
+  inline void BasicRow<CHAR,TRAITS>::flushCell()
+  {
+    _shared_buffer->flushCell();
+  }
+
+  template<typename CHAR, typename TRAITS>
+  inline void BasicRow<CHAR,TRAITS>::revertCell()
+  {
+    _shared_buffer->revertCell();
+  }
+
 
   template<typename CHAR, typename TRAITS>
   template<typename ITER>
@@ -355,20 +354,16 @@ namespace csv
                                     const ITER & end, 
                                     std::forward_iterator_tag )
   {
-    buffer_type * _tmp = new buffer_type();
+    buffer_type * _tmp = new buffer_type(0,0);
     _shared_buffer = shared_buffer_type(_tmp);
     std::size_t j = 0;
     for(ITER itr=begin; itr != end; ++itr) 
     {
       std::size_t i = j;
+      addCell(0,i);
       j = initColumn(*itr, j, _tmp);
-      auto column = _shared_spec->addColumnIfNotExists(_cells.size());
-      _cells.push_back(cell_type(_shared_spec,
-                                 column,
-                                 _shared_buffer, 
-                                 range_type(i,j)));
+      closeCell();
     }
   }
-
 } // namaspace 
 

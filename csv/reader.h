@@ -35,6 +35,7 @@ either expressed or implied, of the FreeBSD Project.
 #include <iostream>
 #include <vector>
 #include <string>
+#include <functional>
 #include "csv_common.h"
 #include "specification.h"
 #include "row.h"
@@ -61,9 +62,8 @@ namespace csv
                                              row_type>
     {
       friend class BasicReader<char_type, char_traits>;
-      BasicReader * reader;
-      row_type      row;
-      iterator(BasicReader * _reader);
+      BasicReader * _reader;
+      iterator(BasicReader * reader);
     public:
       inline const row_type& operator*()  const;
       inline const row_type* operator->() const;
@@ -75,9 +75,10 @@ namespace csv
     };
 
     BasicReader(istream_type & _ist, spec_type _specs = spec_type());
-
     inline iterator begin() { return iterator(this); }
     inline iterator end()   { return iterator();     }
+    bool readRow(row_type & row);
+
 
   protected:
     enum class State
@@ -91,60 +92,54 @@ namespace csv
       UNQUOTED_COL,
       UNQUOTED_COL_RIGHT_WS,
       COMMENT,
+      START_COMMENT,
       END
     };
+  protected:
     typedef typename row_type::buffer_type        buffer_type;
     typedef typename row_type::shared_buffer_type shared_buffer_type;
     typedef typename row_type::shared_spec_type   shared_spec_type;
     typedef typename row_type::cell_type          cell_type;
-    typedef typename row_type::range_type         range_type;
 
     istream_type                                & _ist;
     shared_spec_type                              _specs;
     char_type                                     _quote;
 
     // buffer
-    row_type                                      _current_row;
-    shared_buffer_type                            _last_buffer;
-    shared_buffer_type                            _buffer;
-    ::std::vector<cell_type>                      _last_cells;
-    ::std::vector<cell_type>                      _cells;
-
-    // state
+    row_type                                      _row_buffer[3];
+    ::std::size_t                                 _row_buffer_state;
     State                                         _state;
-    bool                                          _is_end_of_row;
-    bool                                          _has_been_flushed;
-    ::std::size_t                                 _last_unquoted_non_ws_pos;
     ::std::size_t                                 _current_input_line;
     ::std::size_t                                 _current_input_column;
-    ::std::size_t                                 _last_input_line;
-    ::std::size_t                                 _flushed_input_line;
-    ::std::size_t                                 _last_cell_input_line;
-    ::std::size_t                                 _last_cell_input_column;
+    ::std::size_t                                 _next_input_line;
+    ::std::size_t                                 _next_input_column;
     ::std::size_t                                 _csv_row;
-    ::std::size_t                                 _buffer_csv_row;
-    ::std::size_t                                 _last_buffer_csv_row;
-    ::std::size_t                                 _csv_column;
 
     inline bool isWhiteSpace(int ch);
     inline bool isNewline(int ch);
     inline bool isQuote(int ch);
     inline bool isEof(int ch);
-    inline void flush();
+
     inline void addCell();
     inline void addEmptyCell();
+    bool scanStateStart(                   int ch, row_type & row, 
+                                           bool & valid);
+    bool scanStateNextCol(                 int ch, row_type & row);
+    bool scanStateUnquotedCol(             int ch, row_type & row);
+    bool scanStateUnquotedColRightWS(      int ch, row_type & row);
 
-    void scanStateStart(int ch);
-    void scanStateWhiteSpaceBeforeNextCol(int ch);
-    void scanStateNextCol(int ch);
-    void scanStateQuotedCol(int ch);
-    void scanStateEscapedCol(int ch) ;
-    void scanStateQuotedColRightWS(int ch);
-    void scanUnquotedCol(int ch);
-    void scanUnquotedColRightWS(int ch);
-    void scanStateComment(int ch);
-    bool consume();
+    bool scanStateQuotedCol(               int ch, row_type & row);
+    bool scanStateEscapedCol(              int ch, row_type & row);
+    bool scanStateQuotedColRightWS(        int ch, row_type & row);
+    bool scanStateWhiteSpaceBeforeNextCol( int ch, row_type & row);
+    bool scanStateStartComment(            int ch, row_type & row);
+    bool scanStateComment(                 int ch, row_type & row);
+
+  public:
+    inline std::size_t inputLine() { return _current_input_line; }
+    inline std::size_t inputColumn() { return _current_input_column; }
   };
+
 
   ///////////////////////////////////////////////////////////////
   //
@@ -155,55 +150,52 @@ namespace csv
 
   // iterator
   template<typename CHAR, typename TRAITS>
-  BasicReader<CHAR,TRAITS>::iterator::iterator(BasicReader * _reader) 
-    : reader(_reader) 
+  BasicReader<CHAR,TRAITS>::iterator::iterator(BasicReader * reader) 
+    : _reader(reader)
   {
-    row._shared_spec   = reader->_specs;
-    row._shared_buffer = reader->_last_buffer;
-    row._cells         = reader->_last_cells;
-    row._input_line    = reader->_last_input_line;
-    ++*this;
+    if(reader->_row_buffer_state == 3) 
+    {
+      _reader = nullptr;
+    }
+    else 
+    {
+      _reader = reader;
+    }
   }
 
   template<typename CHAR, typename TRAITS>
   inline const typename BasicReader<CHAR,TRAITS>::row_type& 
   BasicReader<CHAR,TRAITS>::iterator::operator*()  const 
   { 
-    return row;  
+    return _reader->_row_buffer[_reader->_row_buffer_state];  
   }
 
   template<typename CHAR, typename TRAITS>
   inline const typename BasicReader<CHAR,TRAITS>::row_type* 
   BasicReader<CHAR,TRAITS>::iterator::operator->() const 
   { 
-    return &row; 
+    return &_reader->_row_buffer[_reader->_row_buffer_state];  
   }
 
   template<typename CHAR, typename TRAITS>
-  BasicReader<CHAR,TRAITS>::iterator::iterator() 
+  BasicReader<CHAR,TRAITS>::iterator::iterator() : _reader(nullptr) 
   {
-    reader = 0;
   }
 
   template<typename CHAR, typename TRAITS>
   inline typename BasicReader<CHAR,TRAITS>::iterator& 
   BasicReader<CHAR,TRAITS>::iterator::operator++() 
   {
-    if(reader) 
+    if(_reader && _reader->_row_buffer_state != 3) 
     {
-      while(reader->consume());
-      if(reader->_has_been_flushed) 
+      if(_reader->readRow(_reader->_row_buffer[1-_reader->_row_buffer_state])) 
       {
-        row._shared_spec          = reader->_specs;
-        row._shared_buffer        = reader->_last_buffer; 
-        row._cells                = reader->_last_cells;
-        row._input_line           = reader->_flushed_input_line;
-        row._row                  = reader->_last_buffer_csv_row;
-        reader->_has_been_flushed = false;
+        _reader->_row_buffer_state = 1-_reader->_row_buffer_state;
       }
-      else if(reader->_state == BasicReader::State::END) 
+      else 
       {
-        reader = 0;
+        _reader->_row_buffer_state = 3;
+        _reader = nullptr;
       }
     }
     return *this;
@@ -222,53 +214,46 @@ namespace csv
   inline bool 
   BasicReader<CHAR,TRAITS>::iterator::operator==(const iterator & rhs) 
   { 
-    return reader == rhs.reader; 
+    return _reader == rhs._reader; 
   }
       
   template<typename CHAR, typename TRAITS>
   inline bool 
   BasicReader<CHAR,TRAITS>::iterator::operator!=(const iterator & rhs) 
   { 
-    return reader != rhs.reader; 
+    return _reader != rhs._reader; 
   }
 
   // Basic reader
   template<typename CHAR, typename TRAITS>
   BasicReader<CHAR,TRAITS>::BasicReader( istream_type       & ist,
                                          spec_type            specs )
-    : _ist(ist)
+    : _ist(ist),_specs(::std::make_shared<spec_type>(specs))
   {
-    _buffer                   = ::std::make_shared<buffer_type>();
-    _last_buffer              = ::std::make_shared<buffer_type>();
-    _specs                    = ::std::make_shared<spec_type>(specs);
-    _quote                    = '"';
-    _last_input_line          = 0;
-    _flushed_input_line       = 0;
-    _current_input_line       = 0;
-    _current_input_column     = 0;
-    _last_cell_input_line     = 0;
-    _last_cell_input_column   = 0;
-    _csv_row                  = 0;
-    _buffer_csv_row           = 0;
-    _last_buffer_csv_row      = 0;
-    _csv_column               = 0;
+    _state                          = State::START;
+    _row_buffer[0]._shared_spec     = _specs;
+    _row_buffer[1]._shared_spec     = _specs;
+    _row_buffer_state               = 0;
+    _quote                          = '"';
+    _current_input_line             = 0;
+    _current_input_column           = 0;
+    _next_input_line                = 0;
+    _next_input_column              = 0;
+    _csv_row                        = 0;
 
-    _state                    = State::START;
-    _is_end_of_row            = false;
-    _has_been_flushed         = false;
-    _last_unquoted_non_ws_pos = 0;
-
-    if(_specs->hasHeader()) 
+    if(!readRow(_row_buffer[_row_buffer_state])) 
     {
-      // read header from file
-      row_type row = *this->begin();
+      _row_buffer_state = 3;
+    }
+    else if(_specs->hasHeader()) 
+    {
       std::size_t column = 0;
-      for(auto itr = row.begin(); itr != row.end(); ++itr) 
+      for(auto & col : _row_buffer[_row_buffer_state]) 
       {
         if(!_specs->addColumnIfNotEmpty(column, 
-                                        itr->template as<string_type>()))
+                                        col.template as<string_type>()))
         {
-          auto res = _specs->_lookup.find(itr->template as<string_type>());
+          auto res = _specs->_lookup.find(col.template as<string_type>());
           ::std::size_t def_column = 0;
           if(res != _specs->_lookup.end()) 
           {
@@ -276,63 +261,18 @@ namespace csv
           }
           throw DuplicateColumnError("Column already defined.",
                                      def_column,
-                                     row.inputLine(),
-                                     itr->inputColumn(),
-                                     itr->row(),
-                                     itr->column());
+                                     _row_buffer[_row_buffer_state].inputLine(),
+                                     col.inputColumn(),
+                                     col.row(),
+                                     col.column());
         }
         column++;
       }
+      if(!readRow(_row_buffer[_row_buffer_state])) 
+      {
+        _row_buffer_state = 3;
+      }
     }
-  }
-  
-  // state automaton
-  template<typename CHAR, typename TRAITS>
-  inline void BasicReader<CHAR,TRAITS>::flush()
-  {
-    if( _is_end_of_row ) 
-    {
-      _last_buffer         = _buffer;
-      _last_buffer_csv_row = _buffer_csv_row;
-      _last_cells          = _cells;
-      _flushed_input_line  = _last_input_line;
-      _buffer              = std::make_shared<buffer_type>();
-      _buffer_csv_row      = _csv_row;
-      _has_been_flushed    = true;
-      _is_end_of_row       = false;
-      _cells.clear();
-    }
-  }
-
-  template<typename CHAR, typename TRAITS>
-  void BasicReader<CHAR,TRAITS>::addCell()
-  {
-    std::size_t n = _cells.empty() ? 0 : _cells.back()._range._end;
-    auto x = _specs->addColumnIfNotExists(_cells.size());
-    _cells.push_back(cell_type(_specs,
-                               _specs->addColumnIfNotExists(_cells.size()),
-                               _buffer, 
-                               range_type(n,
-                                          _buffer->size(),
-                                          _csv_row,
-                                          _csv_column,
-                                          _last_cell_input_line,
-                                          _last_cell_input_column)));
-  }
-
-  template<typename CHAR, typename TRAITS>
-  void BasicReader<CHAR,TRAITS>::addEmptyCell()
-  {
-    std::size_t n = _cells.empty() ? 0 : _cells.back()._range._end;
-    _cells.push_back( cell_type( _specs,
-                                 _specs->addColumnIfNotExists(_cells.size()),
-                                 _buffer, 
-                                 range_type( n,
-                                             n,
-                                             _csv_row,
-                                             _csv_column,
-                                             _last_cell_input_line,
-                                             _last_cell_input_column)));
   }
 
   template<typename CHAR, typename TRAITS>
@@ -360,420 +300,18 @@ namespace csv
   }
 
   template<typename CHAR, typename TRAITS>
-  void BasicReader<CHAR,TRAITS>::scanStateStart(int ch) 
+  bool 
+  BasicReader<CHAR,TRAITS>::readRow(row_type & row)
   {
-    if(isWhiteSpace(ch)) 
+    bool ok = true;
+    bool valid = false;
+    row.clear(_current_input_line, _csv_row);
+    while(ok) 
     {
-    }
-    else if( _specs->isSeparator(ch) ) 
-    {
-      flush();
-      _last_input_line        = _current_input_line;
-      _last_cell_input_line   = _current_input_line;
-      _last_cell_input_column = _current_input_column;
-      addEmptyCell();
-      _csv_column++;
-      _state = State::NEXT_COL;
-    }
-    else if( isNewline(ch) )
-    {
-      if( _specs->hasUsingEmptyLines() ) 
+      if(_state == State::END) 
       {
-        flush();
-        _last_input_line = _current_input_line;
-        _is_end_of_row = true;
-        _csv_column = 0;
-        _csv_row++;
+        return false;
       }
-    }
-    else if( isEof(ch) ) 
-    {
-      flush();
-      _last_input_line = _current_input_line;
-      _state = State::END;
-    }
-    else if( isQuote(ch) ) 
-    {
-      flush();
-      _last_input_line        = _current_input_line;
-      _last_cell_input_line   = _current_input_line;
-      _last_cell_input_column = _current_input_column;
-      _state = State::QUOTED_COL;
-    }
-    else if( _specs->isComment(ch))
-    {
-      _state = State::COMMENT;
-      if( _specs->hasUsingEmptyLines() ) 
-      {
-        _csv_column = 0;
-        _csv_row++;
-      }
-    }
-    else 
-    {
-      flush();
-      _last_input_line        = _current_input_line;
-      _last_cell_input_line   = _current_input_line;
-      _last_cell_input_column = _current_input_column;
-      _buffer->push_back(ch);
-      _state = State::UNQUOTED_COL;
-    }
-  }
-
-  template<typename CHAR, typename TRAITS>
-  void BasicReader<CHAR,TRAITS>::scanStateWhiteSpaceBeforeNextCol(int ch) 
-  {
-    if(isWhiteSpace(ch)) 
-    {
-      // stay in state
-    }
-    else if( _specs->isSeparator(ch) ) 
-    {
-      _last_cell_input_line   = _current_input_line;
-      _last_cell_input_column = _current_input_column;
-      addEmptyCell();
-      _csv_column++;
-      _state = State::NEXT_COL;
-    }
-    else if( isNewline(ch) ) 
-    {
-      _is_end_of_row = true;
-      _state = State::START;
-      _csv_column    = 0;
-      _csv_row++;
-    }
-    else if( _specs->isComment(ch))
-    {
-      _is_end_of_row = true;
-      _state         = State::COMMENT;
-      _csv_column    = 0;
-      _csv_row++;
-    }
-    else if( isEof(ch) ) 
-    {
-      _is_end_of_row = true;
-      flush();
-      _state = State::END;
-    }
-    else if( isQuote(ch) ) 
-    {
-      flush();
-      _state = State::QUOTED_COL;
-    }
-    else 
-    {
-      flush();
-      _buffer->push_back(ch);
-      _state = State::UNQUOTED_COL;
-    }
-  }
-
-  template<typename CHAR, typename TRAITS>
-  void BasicReader<CHAR,TRAITS>::scanStateNextCol(int ch) 
-  {
-    if(isWhiteSpace(ch)) 
-    {
-      // stay in state
-    }
-    else if( _specs->isSeparator(ch) ) 
-    {
-      _last_cell_input_line = _current_input_line;
-      _last_cell_input_column = _current_input_column;
-      addEmptyCell();
-      _csv_column++;
-      _state = State::NEXT_COL;
-    }
-    else if( isNewline(ch) ) 
-    {
-      _last_cell_input_line = _current_input_line;
-      _last_cell_input_column = _current_input_column;
-      addEmptyCell();
-      _is_end_of_row = true;
-      _csv_column = 0;
-      _csv_row++;
-      _state = State::START;
-    }
-    else if( _specs->isComment(ch))
-    {
-      _last_cell_input_line = _current_input_line;
-      _last_cell_input_column = _current_input_column;
-      addEmptyCell();
-      _is_end_of_row = true;
-      _state         = State::COMMENT;
-      _csv_column    = 0;
-      _csv_row++;
-    }
-    else if( isEof(ch) ) 
-    {
-      _last_cell_input_line = _current_input_line;
-      _last_cell_input_column = _current_input_column;
-      addEmptyCell();
-      _is_end_of_row = true;
-      _csv_column++;
-      flush();
-      _state = State::END;
-    }
-    else if( isQuote(ch) ) 
-    {
-      flush();
-      _last_cell_input_line = _current_input_line;
-      _last_cell_input_column = _current_input_column;
-      _state = State::QUOTED_COL;
-    }
-    else 
-    {
-      flush();
-      _last_cell_input_line = _current_input_line;
-      _last_cell_input_column = _current_input_column;
-      _buffer->push_back(ch);
-      _state = State::UNQUOTED_COL;
-    }
-  }
-
-  template<typename CHAR, typename TRAITS>
-  void BasicReader<CHAR,TRAITS>::scanStateQuotedCol(int ch) 
-  {
-    if(isQuote(ch)) 
-    {
-      _state = State::ESCAPED_COL;
-    }
-    else if(!isEof(ch)) 
-    {
-      _buffer->push_back(ch);
-    }
-    else 
-    {
-      throw std::exception();
-    }
-  }
-
-  template<typename CHAR, typename TRAITS>
-  void BasicReader<CHAR,TRAITS>::scanStateEscapedCol(int ch) 
-  {
-    if(isQuote(ch)) 
-    {
-      _buffer->push_back(_quote);
-      _state = State::QUOTED_COL;
-    }
-    else if(_specs->isSeparator(ch)) 
-    {
-      // separator before white space 
-      addCell();
-      _csv_column++;
-      if( isWhiteSpace(ch) ) 
-      {
-        _state = State::WS_BEFORE_NEXT_COL;
-      }
-      else 
-      {
-        _state = State::NEXT_COL;
-      }
-    }
-    else if(isWhiteSpace(ch))
-    {
-      addCell();
-      _csv_column++;
-      _state = State::QUOTED_COL_RIGHT_WS;
-    }
-    else if(isNewline(ch)) 
-    {
-      addCell();
-      _csv_column = 0;
-      _csv_row++;
-      _is_end_of_row = true;
-      _state = State::START;
-    }
-    else if( _specs->isComment(ch))
-    {
-      addCell();
-      _csv_column = 0;
-      _csv_row++;
-      _is_end_of_row = true;
-      _state = State::COMMENT;
-    }
-    else if(isEof(ch)) 
-    {
-      addCell();
-      _csv_column++;
-      _is_end_of_row = true;
-      flush();
-      _state = State::END;
-    }
-    else 
-    {
-      throw ParseError("Unexpected character at the end of quoted cell.",
-                       _current_input_line,
-                       _current_input_column,
-                       _csv_row,
-                       _csv_column);
-    }
-  }
-
-  template<typename CHAR, typename TRAITS>
-  void BasicReader<CHAR,TRAITS>::scanStateQuotedColRightWS(int ch)
-  {
-    if( isWhiteSpace(ch) )
-    {
-    }
-    else if( _specs->isSeparator(ch) ) 
-    {
-      _state = State::NEXT_COL;
-    }
-    else if( isNewline(ch) ) 
-    {
-      _is_end_of_row = true;
-      _state         = State::START;
-      _csv_row++;
-      _csv_column    = 0;
-
-    }
-    else if( _specs->isComment(ch))
-    {
-      _csv_row++;
-      _csv_column    = 0;
-      _is_end_of_row = true;
-      _state         = State::COMMENT;
-    }
-    else if( isEof(ch) )
-    {
-      _is_end_of_row = true;
-      flush();
-      _state = State::END;
-    }
-    else 
-    {
-      // error
-      throw std::exception();
-    }
-  }
-
-  template<typename CHAR, typename TRAITS>
-  void BasicReader<CHAR,TRAITS>::scanUnquotedCol(int ch)
-  {
-    if(_specs->isSeparator(ch)) 
-    {
-      // check separator before white space 
-      addCell();
-      _csv_column++;
-      if( isWhiteSpace(ch) ) 
-      {
-        _state = State::WS_BEFORE_NEXT_COL;
-      }
-      else 
-      {
-        _state = State::NEXT_COL;
-      }
-    }
-    else if( isWhiteSpace(ch) ) 
-    {
-      // remember current position in buffer
-      _last_unquoted_non_ws_pos = _buffer->size();
-      _buffer->push_back(ch);
-      _state = State::UNQUOTED_COL_RIGHT_WS;
-    }
-    else if(isNewline(ch)) 
-    {
-      addCell();
-      _csv_column=0;
-      _csv_row++;
-      _is_end_of_row = true;
-      _state = State::START;
-    }
-    else if( _specs->isComment(ch))
-    {
-      addCell();
-      _is_end_of_row = true;
-      _state = State::COMMENT;
-      // rest of the row is comment.
-      _csv_column    = 0;
-      _csv_row++;
-    }
-    else if(isEof(ch)) 
-    {
-      // end of col
-      addCell();
-      _csv_column++;
-      _is_end_of_row = true;
-      flush();
-      _state = State::END;
-    }
-    else 
-    {
-      _buffer->push_back(ch);
-    }
-  }
-  template<typename CHAR, typename TRAITS>
-  void BasicReader<CHAR,TRAITS>::scanUnquotedColRightWS(int ch)
-  {
-    if(isWhiteSpace(ch)) 
-    {
-      _buffer->push_back(ch);
-    }
-    else if(_specs->isSeparator(ch))
-    {
-      _buffer->resize(_last_unquoted_non_ws_pos);
-      addCell();
-      _csv_column++;
-      _state = State::NEXT_COL;
-    }
-    else if(isNewline(ch)) 
-    {
-      _buffer->resize(_last_unquoted_non_ws_pos);
-      addCell();
-      _csv_column    = 0;
-      _csv_row++;
-      _is_end_of_row = true;
-      _state         = State::START;
-    }
-    else if( _specs->isComment(ch))
-    {
-      _buffer->resize(_last_unquoted_non_ws_pos);
-      addCell();
-      _csv_column=0;
-      _csv_row++;
-      _is_end_of_row = true;
-      _state = State::COMMENT;
-    }
-    else if(isEof(ch))
-    {
-      _buffer->resize(_last_unquoted_non_ws_pos);
-      addCell();
-      _csv_column++;
-      _is_end_of_row = true;
-      flush();
-      _state = State::END;
-    }
-    else 
-    {
-      _buffer->push_back(ch);
-      _last_unquoted_non_ws_pos = _buffer->size();
-      _state = State::UNQUOTED_COL;
-    }
-  }
-
-  template<typename CHAR, typename TRAITS>
-  void BasicReader<CHAR,TRAITS>::scanStateComment(int ch)
-  {
-    if(isNewline(ch)) 
-    {
-      _state = State::START;
-    }
-    else if(isEof(ch))
-    {
-      flush();
-      _state = State::END;
-    }
-  }
-  template<typename CHAR, typename TRAITS>
-  bool BasicReader<CHAR,TRAITS>::consume()
-  {
-    _has_been_flushed = false;
-    if(_state == State::END) 
-    {
-      return false;
-    }
-    if(_ist.good()) 
-    {
       int ch = _ist.get();
       if(ch == '\r') 
       {
@@ -783,73 +321,516 @@ namespace csv
         }
         ch = '\n';
       }
+      
       switch(_state) 
       {
-      case State::START:
-        scanStateStart(ch);
+      case State::START: 
+        ok = scanStateStart(ch, row, valid);
         break;
-
-      case State::WS_BEFORE_NEXT_COL:
-        scanStateWhiteSpaceBeforeNextCol(ch);
-        break;
-
-      case State::NEXT_COL:
-        scanStateNextCol(ch);
-        break;
- 
       case State::QUOTED_COL:
-        scanStateQuotedCol(ch);
+        ok = scanStateQuotedCol(ch, row);
         break;
-          
       case State::ESCAPED_COL:
-        scanStateEscapedCol(ch); 
+        ok = scanStateEscapedCol(ch, row);
         break;
-
+      case State::NEXT_COL:
+        ok = scanStateNextCol(ch, row);
+        break;
+      case State::WS_BEFORE_NEXT_COL:
+        ok = scanStateWhiteSpaceBeforeNextCol(ch, row);
+        break;
       case State::QUOTED_COL_RIGHT_WS:
-        scanStateQuotedColRightWS(ch);
+        ok = scanStateQuotedColRightWS(ch, row);
         break;
-
-      case  State::UNQUOTED_COL:
-        scanUnquotedCol(ch);
+      case State::UNQUOTED_COL:
+        ok = scanStateUnquotedCol(ch, row);
         break;
-
       case State::UNQUOTED_COL_RIGHT_WS:
-        scanUnquotedColRightWS(ch);
+        ok = scanStateUnquotedColRightWS(ch,row);
         break;
-
+      case State::START_COMMENT:
+        ok = scanStateStartComment(ch, row);          
+        break;
       case State::COMMENT:
-        scanStateComment(ch);          
+        ok = scanStateComment(ch, row);          
         break;
-
-      default:
-        // error invalid _state
-        // never should end here
-        throw ParseError("Internal error: invalid state: " + 
-                         std::to_string((int)_state) + 
-                         " in csv parser.",
-                         _current_input_line,
-                         _current_input_column,
-                         _csv_row,
-                         _csv_column);
+      case State::END:
+        ok = false;
         break;
       }
-      if(isNewline(ch)) 
+      if(ch == '\n') 
       {
-        _current_input_line++;
         _current_input_column = 0;
+        _current_input_line++;
       }
-      else 
+      else if(!isEof(ch))
       {
         _current_input_column++;
       }
     }
-    else 
+    if(valid) 
     {
-      // error
-      std::cout << "error 1" << std::endl;
-      throw std::exception();
+      row._shared_buffer->_csv_row = _csv_row;
+      _csv_row++;
+    }
+    return valid;
+  }
+
+
+  template<typename CHAR, typename TRAITS>
+  bool 
+  BasicReader<CHAR,TRAITS>::scanStateStart(int ch, 
+                                           row_type & row, 
+                                           bool & valid) 
+  {
+    if(isWhiteSpace(ch)) 
+    {
+      /* stay in state start */
+      return true;
+    }
+    else if( _specs->isSeparator(ch) ) 
+    {
+      row.addCell(_next_input_line, _next_input_column);
+      row.closeCell();
+      valid              = true;
+      _next_input_line   = _current_input_line;
+      _next_input_column = _current_input_column + 1;
+      _state             = State::NEXT_COL;
+      return true;
+    }
+    else if( isNewline(ch) )
+    {
+      _next_input_line   = _current_input_line+1;
+      _next_input_column = 0;
+      if( _specs->hasUsingEmptyLines() ) 
+      {
+        valid = true;
+        return false;
+      }
+      else 
+      {
+        return true;
+      }
+    }
+    else if( isEof(ch) ) 
+    {
+      _state = State::END;
       return false;
     }
-    return !_has_been_flushed;
+    else if( isQuote(ch) ) 
+    {
+      row.addCell(_current_input_line, _current_input_column);
+      valid  = true;
+      _state = State::QUOTED_COL;
+      return true;
+    }
+    else if( _specs->isComment(ch))
+    {
+      _state = State::START_COMMENT;
+      if( _specs->hasUsingEmptyLines() ) 
+      {
+        valid = true;
+      }
+      return true;
+    }
+    else 
+    {
+      row.addCell(_current_input_line, _current_input_column);
+      row.addChar(ch);
+      valid = true;
+      _state = State::UNQUOTED_COL;
+      return true;
+    }
   }
+
+  template<typename CHAR, typename TRAITS>
+  bool 
+  BasicReader<CHAR,TRAITS>::scanStateWhiteSpaceBeforeNextCol( int ch, 
+                                                              row_type & row)
+  {
+    if(isWhiteSpace(ch)) 
+    {
+      // stay in state
+      return true;
+    }
+    else if( _specs->isSeparator(ch) ) 
+    {
+      row.addCell(_next_input_line, _next_input_column);
+      row.closeCell();
+      _next_input_line   = _current_input_line;
+      _next_input_column = _current_input_column + 1;
+      _state             = State::NEXT_COL;
+      return true;
+    }
+    else if( isNewline(ch) ) 
+    {
+      _next_input_column   = 0;
+      _next_input_line = _current_input_line + 1;
+      _state = State::START;
+      return false;
+    }
+    else if( _specs->isComment(ch))
+    {
+      _next_input_column   = 0;
+      _next_input_line = _current_input_line + 1;
+      _state         = State::COMMENT;
+      return true;
+    }
+    else if( isEof(ch) ) 
+    {
+      _state = State::END;
+      return false;
+    }
+    else if( isQuote(ch) ) 
+    {
+      row.addCell(_current_input_line, _current_input_column);
+      _state = State::QUOTED_COL;
+      return true;
+    }
+    else 
+    {
+      row.addCell(_current_input_line, _current_input_column);
+      row.addChar(ch);
+      _state = State::UNQUOTED_COL;
+      return true;
+    }
+    return false;
+  }
+
+  template<typename CHAR, typename TRAITS>
+  bool BasicReader<CHAR,TRAITS>::scanStateNextCol(int ch, row_type & row) 
+  {
+    if(isWhiteSpace(ch)) 
+    {
+      // stay in state
+      return true;
+    }
+    else if( _specs->isSeparator(ch) ) 
+    {
+      row.addCell(_next_input_line, _next_input_column);
+      row.closeCell();
+      _next_input_line   = _current_input_line;
+      _next_input_column = _current_input_column+1;
+      _state = State::NEXT_COL;
+      return true;
+    }
+    else if( isNewline(ch) ) 
+    {
+      row.addCell(_next_input_line, _next_input_column);
+      row.closeCell();
+      _next_input_line   = _current_input_line+1;
+      _next_input_column = 0;
+      _state = State::START;
+      return false;
+    }
+    else if( _specs->isComment(ch))
+    {
+      // empty cell
+      row.addCell(_next_input_line, _next_input_column);
+      row.closeCell();
+      _next_input_line   = _current_input_line+1;
+      _next_input_column = 0;
+      _state  = State::COMMENT;
+      return true;
+    }
+    else if( isEof(ch) ) 
+    {
+      row.addCell(_next_input_line, _next_input_column);
+      row.closeCell();
+      _state = State::END;
+      return false;
+    }
+    else if( isQuote(ch) ) 
+    {
+      _next_input_column = _current_input_column;
+      _next_input_line = _current_input_line;
+      row.addCell(_next_input_line, _next_input_column);
+      _state = State::QUOTED_COL;
+      return true;
+    }
+    else 
+    {
+      row.addCell(_current_input_line, _current_input_column);
+      row.addChar(ch);
+      _state = State::UNQUOTED_COL;
+      return true;
+    }
+  }
+
+  template<typename CHAR, typename TRAITS>
+  bool BasicReader<CHAR,TRAITS>::scanStateQuotedCol(int ch, row_type & row) 
+  {
+    if(isQuote(ch)) 
+    {
+      _state = State::ESCAPED_COL;
+      return true;
+    }
+    else if(!isEof(ch)) 
+    {
+      row.addChar(ch);
+      return true;
+    }
+    else 
+    {
+      throw ParseError("Unexpected end of file, expected '\"'.",
+                       _current_input_line,
+                       _current_input_column,
+                       _csv_row,
+                       row.size());
+    }
+    return false;
+  }
+
+  template<typename CHAR, typename TRAITS>
+  bool BasicReader<CHAR,TRAITS>::scanStateEscapedCol(int ch, row_type & row) 
+  {
+    if(isQuote(ch)) 
+    {
+      row.addChar(_quote);
+      _state = State::QUOTED_COL;
+      return true;
+    }
+    else if(_specs->isSeparator(ch)) 
+    {
+      row.closeCell();
+      _next_input_column  = _current_input_column+1;
+      _next_input_line    = _current_input_line;
+      row.addCell(_next_input_line,_next_input_column);
+      if( isWhiteSpace(ch) ) 
+      {
+        _state = State::WS_BEFORE_NEXT_COL;
+      }
+      else 
+      {
+        _state = State::NEXT_COL;
+      }
+      return true;
+    }
+    else if(isWhiteSpace(ch))
+    {
+      row.closeCell();
+      _state = State::QUOTED_COL_RIGHT_WS;
+      return true;
+    }
+    else if(isNewline(ch)) 
+    {
+      row.closeCell();
+      _next_input_line   = _current_input_line + 1;;
+      _next_input_column = 0;
+      _state = State::START;
+      return false;
+    }
+    else if( _specs->isComment(ch))
+    {
+      row.closeCell();
+      _next_input_line   = _current_input_line + 1;;
+      _next_input_column = 0;
+      _state = State::COMMENT;
+      return true;
+    }
+    else if(isEof(ch)) 
+    {
+      row.closeCell();
+      _state = State::END;
+      return false;
+    }
+    else 
+    {
+      throw ParseError("Unexpected character after end of quoted cell.",
+                       _current_input_line,
+                       _current_input_column,
+                       _csv_row,
+                       row.size());
+    }
+    return false;
+  }
+
+  template<typename CHAR, typename TRAITS>
+  bool 
+  BasicReader<CHAR,TRAITS>::scanStateQuotedColRightWS(int ch, row_type & row)
+  {
+    if( isWhiteSpace(ch) )
+    {
+      return true;
+    }
+    else if( _specs->isSeparator(ch) ) 
+    {
+      _next_input_column  = _current_input_column+1;
+      _next_input_line    = _current_input_line;
+      row.addCell(_next_input_line,_next_input_column);
+      if( isWhiteSpace(ch) ) 
+      {
+        _state = State::WS_BEFORE_NEXT_COL;
+      }
+      else 
+      {
+        _state = State::NEXT_COL;
+      }
+      return true;
+    }
+    else if( isNewline(ch) ) 
+    {
+      _next_input_column   = 0;
+      _next_input_line = _current_input_line + 1;
+      _state = State::START;
+      return false;
+    }
+    else if( _specs->isComment(ch))
+    {
+      _state = State::COMMENT;
+      return true;
+    }
+    else if( isEof(ch) )
+    {
+      _state = State::END;
+      return false;
+    }
+    else 
+    {
+      throw ParseError("Unexpected character at the end of quoted cell.",
+                       _current_input_line,
+                       _current_input_column,
+                       _csv_row,
+                       (row.size()?row.size()-1:0));
+    }
+    return true;
+  }
+
+  template<typename CHAR, typename TRAITS>
+  bool BasicReader<CHAR,TRAITS>::scanStateUnquotedCol(int ch, row_type & row)
+  {
+    if(_specs->isSeparator(ch)) 
+    {
+      row.closeCell();
+      _next_input_column  = _current_input_column+1;
+      _next_input_line    = _current_input_line;
+      if( isWhiteSpace(ch) ) 
+      {
+        _state = State::WS_BEFORE_NEXT_COL;
+      }
+      else 
+      {
+        _state = State::NEXT_COL;
+      }
+      return true;
+    }
+    else if( isWhiteSpace(ch) ) 
+    {
+      row.flushCell();
+      row.addChar(ch);
+      _state = State::UNQUOTED_COL_RIGHT_WS;
+      return true;
+    }
+    else if(isNewline(ch)) 
+    {
+      row.closeCell();
+      _state = State::START;
+      return false;
+    }
+    else if( _specs->isComment(ch))
+    {
+      row.closeCell();
+      _state = State::COMMENT;
+      return true;
+    }
+    else if(isEof(ch)) 
+    {
+      row.closeCell();
+      _state = State::END;
+      return false;
+    }
+    else 
+    {
+      row.addChar(ch);
+      return true;
+    }
+  }
+
+  template<typename CHAR, typename TRAITS>
+  bool 
+  BasicReader<CHAR,TRAITS>::scanStateUnquotedColRightWS(int ch, 
+                                                        row_type & row)
+  {
+    if(isWhiteSpace(ch)) 
+    {
+      row.addChar(ch);
+      return true;
+    }
+    else if(_specs->isSeparator(ch))
+    {
+      row.revertCell();
+      row.closeCell();
+      _next_input_column  = _current_input_column+1;
+      _next_input_line    = _current_input_line;
+      row.addCell(_next_input_line,_next_input_column);
+      _state = State::NEXT_COL;
+      return true;
+    }
+    else if(isNewline(ch)) 
+    {
+      row.revertCell();
+      row.closeCell();
+      _state = State::START;
+      return false;
+    }
+    else if( _specs->isComment(ch))
+    {
+      row.revertCell();
+      row.closeCell();
+      _state = State::COMMENT;
+      return true;
+    }
+    else if(isEof(ch))
+    {
+      row.revertCell();
+      row.closeCell();
+      _state = State::END;
+      return false;
+    }
+    else 
+    {
+      row.addChar(ch);
+      _state = State::UNQUOTED_COL;
+      return true;
+    }
+  }
+
+  template<typename CHAR, typename TRAITS>
+  bool BasicReader<CHAR,TRAITS>::scanStateStartComment(int ch, row_type & row)
+  {
+    if(isNewline(ch)) 
+    {
+      _state = State::START;
+      return ! _specs->hasUsingEmptyLines();
+    }
+    else if(isEof(ch))
+    {
+      _state = State::END;
+      return false;
+    }
+    else 
+    {
+      return true;
+    }
+  }
+
+  template<typename CHAR, typename TRAITS>
+  bool BasicReader<CHAR,TRAITS>::scanStateComment(int ch, row_type & row)
+  {
+    if(isNewline(ch)) 
+    {
+      _state = State::START;
+      return false;
+    }
+    else if(isEof(ch))
+    {
+      _state = State::END;
+      return false;
+    }
+    else 
+    {
+      return true;
+    }
+  }
+
 } // namespace csv

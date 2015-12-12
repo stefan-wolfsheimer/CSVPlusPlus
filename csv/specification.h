@@ -312,7 +312,7 @@ namespace csv
                              0,0,0,0);
     }
     auto res = 
-      _lookup.insert(std::make_pair(name, 
+      _lookup.insert(std::make_pair(name,
                                     std::make_shared<Column>(index,
                                                              name)));
     if(res.second) 

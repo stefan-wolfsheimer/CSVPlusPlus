@@ -36,124 +36,62 @@ either expressed or implied, of the FreeBSD Project.
 
 struct TestStreamResult
 {
+  typedef std::pair<std::size_t, std::size_t>      position_type;
+  typedef std::pair<std::string, position_type>    cell_type;
+  typedef std::vector<std::vector<cell_type> >     data_type;
+  typedef std::vector<position_type>               coordinate_type;
 
-  typedef std::vector<std::pair<std::size_t,std::size_t> > 
-  column_position_type;
+  data_type       _result;
+  bool            _is_eof;
+  std::size_t     _eof_input_line;
+  std::size_t     _eof_input_column;
+  coordinate_type _coordinates;
 
-  struct row_position_type
+  TestStreamResult(std::size_t eof_input_line =0, std::size_t eof_input_column=0) 
   {
-    std::size_t          input_line;
-    std::size_t          row;
-    column_position_type input_columns;
-
-    row_position_type(std::size_t i, 
-                      std::size_t r,
-                      const column_position_type & columns = 
-                      column_position_type())
-      : input_line(i), row(r), input_columns(columns) 
-    {}
-
-    row_position_type(std::size_t i, 
-                      const column_position_type & columns = 
-                          column_position_type())
-      : input_line(i), 
-        row(::std::numeric_limits<std::size_t>::max()), 
-        input_columns(columns)
-    {}
-
-
-    friend std::ostream & operator<<(std::ostream & ost, 
-                                     const row_position_type & obj) 
-    {
-      ost << obj.input_line << " " << obj.row << ":";
-      for(auto c : obj.input_columns) 
-      {
-        ost << " " << c.first << "/" << c.second;
-      }
-      ost << std::endl;
-      return ost;
-    };
-    
-    bool operator==(const row_position_type & rhs) const 
-    {
-      return 
-        input_line    == rhs.input_line && 
-        row           == rhs.row && 
-        input_columns == rhs.input_columns;
-    }
-  };
-
-  typedef std::vector<row_position_type>           position_type;
-  typedef std::vector<std::vector<std::string> >   data_type;
-  data_type     result;
-  bool          isEof;
-  bool          csv_cells_ok;
-  position_type positions;
-
-  TestStreamResult() 
-  {
-    isEof        = true;
-    csv_cells_ok = true;
+    _eof_input_line   = eof_input_line;
+    _eof_input_column = eof_input_column;
+    _is_eof           = true;
   }
   
-  TestStreamResult(const data_type & data) 
-    : result(data) 
+  TestStreamResult(const data_type & data,
+                   std::size_t       eof_input_line =0, 
+                   std::size_t       eof_input_column=0) 
+    : _result(data) 
   {
-    isEof        = true;
-    csv_cells_ok = true;
+    _is_eof           = true;
+    _eof_input_line   = eof_input_line;
+    _eof_input_column = eof_input_column;
+    std::size_t i = 0;
+    for(const auto & row : _result) 
+    {
+      std::size_t j = 0;
+      for(const auto & cell : row) 
+      {
+        _coordinates.push_back(std::make_pair(i,j));
+        j++;
+      }
+      i++;
+    }
   }
 
 
   bool operator==(const TestStreamResult & rhs) 
   {
     return 
-      result       == rhs.result && 
-      isEof        == rhs.isEof && 
-      csv_cells_ok == rhs.csv_cells_ok;
+      _eof_input_line   == rhs._eof_input_line && 
+      _eof_input_column == rhs._eof_input_column && 
+      _result           == rhs._result && 
+      _is_eof           == rhs._is_eof && 
+      _coordinates      == rhs._coordinates;
   }
 
-  bool operator==(const position_type & rhs) 
-  {
-    if(positions.size() != rhs.size()) 
-    {
-      return false;
-    }
-    for(std::size_t i = 0; i < rhs.size(); i++) 
-    {
-      std::size_t lhs_row = positions[i].row;
-      std::size_t rhs_row = rhs[i].row;
-      if(lhs_row == ::std::numeric_limits<std::size_t>::max()) 
-      {
-        lhs_row = i;
-      }
-      if(rhs_row == ::std::numeric_limits<std::size_t>::max()) 
-      {
-        rhs_row = i;
-      }
-      if( positions[i].input_line    != rhs[i].input_line || 
-          positions[i].input_columns != rhs[i].input_columns || 
-          lhs_row                    != rhs_row) 
-      {
-        return false;
-      }
-    }
-    return true;
-  }
-
-
-  friend std::ostream & operator<<(std::ostream & ost, 
+  friend std::ostream & operator<<(std::ostream           & ost, 
                                    const TestStreamResult & obj) 
   {
-    std::size_t i = 0;
-    for(const auto & row : obj.result) 
+    for(const auto & row : obj._result) 
     {
       bool first = true;
-      if(i < obj.positions.size()) 
-      {
-        ost << obj.positions[i].input_line << " ";
-        ost << obj.positions[i].row << " ";
-      }
-      std::size_t j = 0;
       for(const auto & col : row) 
       {
         if(first) 
@@ -164,97 +102,90 @@ struct TestStreamResult
         {
           ost << ",";
         }
-        if(i < obj.positions.size() && 
-           j < obj.positions[i].input_columns.size()) 
-        {
-          ost << obj.positions[i].input_columns[j].first << "/";
-          ost << obj.positions[i].input_columns[j].second << " ";
-          
-        }
-        ost << "[";
-        for(auto ch : col) 
+        ost << "([";
+        for(auto ch : col.first) 
         {
           if(ch == '\t') ost << "\\t";
           else if(ch == '\r') ost << "\\r";
           else if(ch == '\n') ost << "\\n";
           else ost << ch;
         }
-        ost << "]";
-        j++;
+        ost << "]" << " " << col.second.first << " " << col.second.second << ")";
       }
       ost << std::endl;
-      i++;
     }
-    ost << " isEof=" << obj.isEof << std::endl;
+    ost << " is_eof=" << obj._is_eof << " ";
+    ost << " eof=" << obj._eof_input_line << ":" << obj._eof_input_column << std::endl;
+    bool first = true;
+    for(const auto & c : obj._coordinates) 
+    {
+      if(first)
+      {
+        first = false;
+      }
+      else 
+      {
+        ost << ", ";
+      }
+      ost << "(" << c.first << "," << c.second << ")";
+    }
     return ost;
   }
 };
 
 
+TestStreamResult::cell_type makeCell(const std::string & name, std::size_t r, std::size_t c)
+{
+  return std::make_pair(name, std::make_pair(r,c));
+}
 
 TestStreamResult parseStream(const std::string & str,
                              csv::Specification specs = 
                              csv::Specification())
 {
-  typedef TestStreamResult::column_position_type column_position_type;
   std::stringstream ss(str);
-  TestStreamResult ret;
-  csv::Reader reader(ss, specs); 
-  std::size_t i = 0;
+  TestStreamResult  ret;
+  csv::Reader       reader(ss, specs);
+  std::size_t       i = 0;
   for(auto row : reader) 
   {
-    std::vector<std::string> row_vector;
-    TestStreamResult::row_position_type rpos(row.inputLine(),
-                                             row.row(),
-                                             column_position_type());
-    std::size_t j = 0;
+    std::vector<TestStreamResult::cell_type>  row_vector;
     for(auto col : row) 
     {
-      row_vector.push_back(col.as<std::string>());
-      rpos.input_columns.push_back(std::make_pair(
-                                                  col.inputLine(),
-                                                  col.inputColumn()));
-      if(j != col.column() || 
-         i != col.row() ) 
-      {
-        std::cout << i << " " << col.row()  << " "
-                  << j << " " << col.column() << std::endl;
-        ret.csv_cells_ok = false;
-      }
-      j++;
+      row_vector.push_back(std::make_pair(col.as<std::string>(),
+                                          std::make_pair(col.inputLine(), 
+                                                         col.inputColumn())));
+      ret._coordinates.push_back(std::make_pair(col.row(),col.column()));
     }
-    ret.result.push_back(row_vector);
-    ret.positions.push_back(rpos);
-    i++;
+    ret._result.push_back(row_vector);
   }
-  ret.isEof = ss.eof();
+  ret._is_eof = ss.eof();
+  ret._eof_input_line = reader.inputLine();
+  ret._eof_input_column = reader.inputColumn();
   return ret;
 }
-
-
 
 TEST_CASE("ReadEmptyFile", "[csv_reader]")
 {
   REQUIRE(parseStream("") == TestStreamResult());
 }
 
-
 TEST_CASE("ReadOnlyWhiteSpace", "[csv_reader]")
 {
-  REQUIRE(parseStream("  ") == TestStreamResult());
+  REQUIRE(parseStream("  ") == TestStreamResult(0,2));
 }
 
 TEST_CASE("ReadOnlyEmptyLines", "[csv_reader]")
 {
-  REQUIRE(parseStream("\r\n\n\n   \n") == TestStreamResult());
+  REQUIRE(parseStream("\r\n\n\n   \n ") == TestStreamResult(4,1));
 }
-
 
 TEST_CASE("ReadOneEmptyCell", "[csv_reader]")
 {
-  REQUIRE(parseStream("\"\"")== TestStreamResult({ 
-        std::vector<std::string>{ "" } 
-      }));
+  REQUIRE(parseStream("\"\"")== TestStreamResult(
+      { 
+        { { "", { 0,0} } }
+      },0,2));
 }
 
 TEST_CASE("ReadTwoEmptyCells", "[csv_reader]")
@@ -262,208 +193,220 @@ TEST_CASE("ReadTwoEmptyCells", "[csv_reader]")
 
   REQUIRE(parseStream(",")== TestStreamResult(
       { 
-        std::vector<std::string>{ "","" } 
-      }));
+        { makeCell("",0,0), makeCell("",0,1) }
+      },0,1));
 }
+
 
 TEST_CASE("ReadThreeEmptyCells", "[csv_reader]")
 {
   REQUIRE(parseStream(",,")== TestStreamResult({ 
-        std::vector<std::string>{ "","","" } 
-      }));
+        { makeCell("",0,0), makeCell("",0,1), makeCell("",0,2) }
+  },0,2));
 }
+
 
 TEST_CASE("ReadThreeEmptyCellsWithWhitespaces", "[csv_reader]")
 {
   REQUIRE(parseStream(" , ,   ")== TestStreamResult({ 
-        std::vector<std::string>{ "","","" } 
-      }));
+        { makeCell("",0,0), makeCell("",0,2), makeCell("",0,4) }
+      },0,7));
 }
+
 
 TEST_CASE("ReadEmptyCellsInDifferentRows", "[csv_reader]")
 {
   REQUIRE(parseStream(",,\n,")== TestStreamResult({ 
-        std::vector<std::string>{ "","","" },
-        std::vector<std::string>{ "","" } 
-      }));
+        { makeCell("",0,0), makeCell("",0,1), makeCell("",0,2) },
+        { makeCell("",1,0), makeCell("",1,1) }
+      },1,1));
 }
 
 TEST_CASE("ReadEmptyCellsInDifferentRowsWithWhitespaces", "[csv_reader]")
 {
   REQUIRE(parseStream(" , ,   \n  ,")== TestStreamResult({ 
-        std::vector<std::string>{ "","","" },
-        std::vector<std::string>{ "","" } 
-      }));
+        { makeCell("",0,0), makeCell("",0,2), makeCell("",0,4) },
+        { makeCell("",1,0), makeCell("",1,3) }
+      },1,3));
 }
+
 
 TEST_CASE("ReadThreeEmptyQuotedAndUnquotedCells", "[csv_reader]")
 {
   REQUIRE(parseStream("\"\",,")== TestStreamResult({ 
-        std::vector<std::string>{ "","","" } 
-      }));
+        { makeCell("",0,0), makeCell("",0,3), makeCell("",0,4) }
+      },0,4));
   REQUIRE(parseStream(" \"\" , ,   ")== TestStreamResult({ 
-        std::vector<std::string>{ "","","" } 
-      }));
+        { makeCell("",0,1), makeCell("",0,5), makeCell("",0,7) }
+      },0,10));
   REQUIRE(parseStream(", \"\" , ")== TestStreamResult({ 
-        std::vector<std::string>{ "","","" } 
-      }));
+        { makeCell("",0,0), makeCell("",0,2), makeCell("",0,6) }
+      },0,7));
   REQUIRE(parseStream(",,\"\"")== TestStreamResult({ 
-        std::vector<std::string>{ "","","" } 
-      }));
+        { makeCell("",0,0), makeCell("",0,1), makeCell("",0,2) }
+      },0,4));
   REQUIRE(parseStream(", , \"\" ")== TestStreamResult({ 
-        std::vector<std::string>{ "","","" } 
-      }));
+        { makeCell("",0,0), makeCell("",0,1), makeCell("",0,4) }
+      },0,7));
 }
-
 
 TEST_CASE("ReadOneNoneEmptyCell", "[csv_reader]")
 {
   REQUIRE(parseStream("abc") == TestStreamResult({ 
-      std::vector<std::string>{ "abc" } 
-      }));
+        { makeCell("abc",0,0) }
+      },0,3));
 }
+
 
 TEST_CASE("ReadOneNoneEmptyCellWithWhitespace", "[csv_reader]")
 {
   REQUIRE(parseStream("  \tabc\t ") == TestStreamResult({ 
-      std::vector<std::string>{ "abc" } 
-      }));
+        { makeCell("abc",0,3) }
+      },0,8));
 }
+
+
+TEST_CASE("ReadOneNoneEmptyQuotedCell", "[csv_reader]")
+{
+  REQUIRE(parseStream("\" \tabc \"") == TestStreamResult({ 
+        { makeCell(" \tabc ",0,0) }
+      },0,8));
+}
+
 
 TEST_CASE("ReadOneNoneEmptyQuotedCellWithWhitespace", "[csv_reader]")
 {
   REQUIRE(parseStream("  \" \tabc \"  ") == TestStreamResult({ 
-        std::vector<std::string>{ " \tabc " } 
-      }));
+        { makeCell(" \tabc ",0,2) }
+      },0,12));
 }
 
 TEST_CASE("ReadOneRow", "[csv_reader]")
 {
+
+  REQUIRE(parseStream("abc,def,ghi") == TestStreamResult({ 
+         { makeCell("abc",0,0), makeCell("def",0,4),makeCell("ghi",0,8) }
+      },0,11));
   REQUIRE(parseStream(" \n abc , def,ghi  \n\n") == TestStreamResult({ 
-        std::vector<std::string>{ "abc","def","ghi" } 
-      }));
-  REQUIRE(parseStream(" \n abc ,\" def\",ghi,,\"\"") == 
-          TestStreamResult({ 
-              std::vector<std::string>{ "abc"," def","ghi","","" } 
-      }));
+        { makeCell("abc",1,1), makeCell("def",1,7),makeCell("ghi",1,11) }
+      },3,0));
+  REQUIRE(parseStream(" \n abc ,\" def\",ghi,,\"\"") == TestStreamResult({ 
+        { makeCell("abc",1,1), makeCell(" def",1,6),makeCell("ghi",1,13),
+          makeCell("",1,17),   makeCell("",1,18) }
+      },1,20));
 }
 
 TEST_CASE("ReadOneRowFirstColumnEmpty", "[csv_reader]")
 {
-
-  // first empty
   REQUIRE(parseStream(",a,b,c")== TestStreamResult({ 
-        std::vector<std::string>{ "","a","b","c" } 
-      }));
+        {   makeCell("",0,0), makeCell("a",0,1), makeCell("b",0,3), 
+            makeCell("c",0,5) } } ,0,6));
   REQUIRE(parseStream("  , a  ,  b  , c  ")== TestStreamResult({ 
-        std::vector<std::string>{ "","a","b","c" } 
-      }));
+        {   makeCell("",0,0), makeCell("a",0,4), makeCell("b",0,10), 
+            makeCell("c",0,15) } },0,18));
   REQUIRE(parseStream("\n,a,b,c\r\n")== TestStreamResult({ 
-        std::vector<std::string>{ "","a","b","c" } 
-      }));
+        {   makeCell("",1,0), makeCell("a",1,1), makeCell("b",1,3), 
+            makeCell("c",1,5) } },2,0));
   REQUIRE(parseStream("\"\",a,b,c")== TestStreamResult({ 
-        std::vector<std::string>{ "","a","b","c" } 
-      }));
+        {   makeCell("",0,0), makeCell("a",0,3), makeCell("b",0,5), 
+            makeCell("c",0,7) } },0,8));
   REQUIRE(parseStream(" \"\" , a , b , c  \n")== TestStreamResult({ 
-        std::vector<std::string>{ "","a","b","c" } 
-      }));
+        {   makeCell("",0,1), makeCell("a",0,6), makeCell("b",0,10), 
+            makeCell("c",0,14) } },1,0));
 }
 
 TEST_CASE("ReadOneRowSecondColumnEmpty", "[csv_reader]")
 {
   REQUIRE(parseStream("a,,b,c")== TestStreamResult({ 
-        std::vector<std::string>{ "a","","b","c" } 
-      }));
+        {   makeCell("a",0,0), makeCell("",0,2), makeCell("b",0,3), 
+            makeCell("c",0,5) } } ,0,6));
   REQUIRE(parseStream("  \"a\" ,  ,  b , c  ")== TestStreamResult({ 
-        std::vector<std::string>{ "a","","b","c" } 
-      }));
+        {   makeCell("a",0,2), makeCell("",0,7), makeCell("b",0,12), 
+            makeCell("c",0,16) } },0,19));
   REQUIRE(parseStream("a,\"\",b,c")== TestStreamResult({ 
-        std::vector<std::string>{ "a","","b","c" } 
-      }));
+        {   makeCell("a",0,0), makeCell("",0,2), makeCell("b",0,5), 
+            makeCell("c",0,7) } },0,8));
   REQUIRE(parseStream(" a , \"\" , b , c ")== TestStreamResult({ 
-        std::vector<std::string>{ "a","","b","c" } 
-      }));
+        {   makeCell("a",0,1), makeCell("",0,5), makeCell("b",0,10), 
+            makeCell("c",0,14) } },0,16));
 }
+
 
 TEST_CASE("ReadOneRowLastColumnEmpty", "[csv_reader]")
 {
   REQUIRE(parseStream("a,b,c,")== TestStreamResult({ 
-        std::vector<std::string>{ "a","b","c","" } 
-      }));
+        {   makeCell("a",0,0), makeCell("b",0,2), makeCell("c",0,4), 
+            makeCell("",0,6) } } ,0,6));
   REQUIRE(parseStream("a,b,c,\n")== TestStreamResult({ 
-        std::vector<std::string>{ "a","b","c","" } 
-      }));
+        {   makeCell("a",0,0), makeCell("b",0,2), makeCell("c",0,4), 
+            makeCell("",0,6) } } ,1,0));
   REQUIRE(parseStream("\ta , b \t, c  ,  ")== TestStreamResult({ 
-        std::vector<std::string>{ "a","b","c","" } 
-      }));
+        {   makeCell("a",0,1), makeCell("b",0,5), makeCell("c",0,10), 
+            makeCell("",0,14) } } ,0,16));
   REQUIRE(parseStream("\ta , b \t, c  ,  \n  ")== TestStreamResult({ 
-        std::vector<std::string>{ "a","b","c","" } 
-      }));
+        {   makeCell("a",0,1), makeCell("b",0,5), makeCell("c",0,10), 
+            makeCell("",0,14) } } ,1,2));
   REQUIRE(parseStream("a,b,c,\"\"")== TestStreamResult({ 
-        std::vector<std::string>{ "a","b","c","" } 
-      }));
+        {   makeCell("a",0,0), makeCell("b",0,2), makeCell("c",0,4), 
+            makeCell("",0,6) } } ,0,8));
   REQUIRE(parseStream("a,b,c,\"\"\r\n")== TestStreamResult({ 
-        std::vector<std::string>{ "a","b","c","" } 
-      }));
+        {   makeCell("a",0,0), makeCell("b",0,2), makeCell("c",0,4), 
+            makeCell("",0,6) } } ,1,0));
   REQUIRE(parseStream(" a , b , c  , \"\""  )== TestStreamResult({ 
-        std::vector<std::string>{ "a","b","c","" } 
-      }));
+        {   makeCell("a",0,1), makeCell("b",0,5), makeCell("c",0,9), 
+            makeCell("",0,14) } } ,0,16));
   REQUIRE(parseStream(" a , b , c  , \"\"  \n"  )== TestStreamResult({ 
-        std::vector<std::string>{ "a","b","c","" } 
-      }));
+        {   makeCell("a",0,1), makeCell("b",0,5), makeCell("c",0,9), 
+            makeCell("",0,14) } } ,1,0));
 }
 
 TEST_CASE("ReadOneQuotedCell", "[csv_reader]")
 {
   REQUIRE(parseStream("\"a \"\"\"\" bc\"") == TestStreamResult({ 
-        std::vector<std::string>{ "a \"\" bc" } 
-      }));
+        {   makeCell("a \"\" bc",0,0) }},0,11));
   REQUIRE(parseStream("\"abc\"\"\"") == TestStreamResult({ 
-        std::vector<std::string>{ "abc\"" } 
-      }));
-  REQUIRE(parseStream(" \n abc  \n\n ") == TestStreamResult({ 
-        std::vector<std::string>{ "abc" } 
-      }));
+        {   makeCell("abc\"",0,0) }},0,7)); 
+  REQUIRE(parseStream(" \n abc\"  \n\n ") == TestStreamResult({ 
+        {   makeCell("abc\"",1,1) }},3,1)); 
   REQUIRE(parseStream(" \" a\nbc \t\n \" \n\n ") == TestStreamResult({ 
-        std::vector<std::string>{ " a\nbc \t\n " } 
-      }));
+        {   makeCell(" a\nbc \t\n ",0,1)}},4,1)); 
 }
 
 TEST_CASE("ReadOneColumn", "[csv_reader]")
 {
   REQUIRE(parseStream(" a1\r\n \n  b1  b2  \r\n\"a3\"\n\r\n") == 
           TestStreamResult({ 
-              std::vector<std::string>{ "a1" },
-              std::vector<std::string>{ "b1  b2" },
-              std::vector<std::string>{ "a3" }
-      }));
+            {   makeCell("a1",    0,1)},
+            {   makeCell("b1  b2",2,2)},
+            {   makeCell("a3",    3,0)}}, 5,0));
 }
 
-TEST_CASE("ReadMultipleRowsWithBegin", "[csv_reader]")
+TEST_CASE("ReadMultipleCopyOnWrite", "[csv_reader]")
 {
-  std::stringstream ss(" a \n  b \n c \n");
+  std::stringstream ss(" a \n  b \n c \n d \n\n");
   csv::Reader::iterator first_row_iterator; 
   csv::Reader::iterator second_row_iterator; 
   csv::Reader::iterator third_row_iterator; 
-  csv::Row row1,row2,row3;
+  csv::Row row1,row2,row3,row4;
   {
     csv::Reader reader(ss); 
-    csv::Reader::iterator first_row_iterator  = reader.begin();
-    csv::Reader::iterator second_row_iterator = reader.begin(); 
-    csv::Reader::iterator third_row_iterator  = reader.begin();
-    csv::Reader::iterator end_iterator        = reader.begin();
-    REQUIRE(end_iterator == reader.end());
-    row1 = *first_row_iterator;
-    row2 = *second_row_iterator;
-    row3 = *third_row_iterator;
+    csv::Reader::iterator itr = reader.begin();
+    row1 = *itr; ++itr;
+    row2 = *itr; ++itr;
+    row3 = *itr; ++itr;
+    row4 = *itr; ++itr;
+    REQUIRE(itr == reader.end());    
   }
   auto cell1 = *row1.begin();
   auto cell2 = *row2.begin();
   auto cell3 = *row3.begin();
+  auto cell4 = *row4.begin();
   REQUIRE("a" == cell1.as<std::string>());
   REQUIRE("b" == cell2.as<std::string>());
   REQUIRE("c" == cell3.as<std::string>());
+  REQUIRE("d" == cell4.as<std::string>());
 }
+
 
 TEST_CASE("ReadMatrix", "[csv_reader]")
 {
@@ -478,11 +421,11 @@ TEST_CASE("ReadMatrix", "[csv_reader]")
                         .withoutSeparator(',')
                         .withSeparator(';')) == 
           TestStreamResult({ 
-              std::vector<std::string>{ "a1","a2","a3" },
-              std::vector<std::string>{ "b1","b\n2" },
-              std::vector<std::string>{ "","","","" },
-              std::vector<std::string>{ "c1","c2.1,c2.2" }
-      }));
+              { makeCell("a1",0,1), makeCell("a2",0,5), makeCell("a3",0,9) },
+              { makeCell("b1",1,0), makeCell("b\n2",1,6) },
+              { makeCell("",  3,0), makeCell("",3,1), makeCell("",3,2), 
+                makeCell("",3,3) },
+              { makeCell("c1",5,1), makeCell("c2.1,c2.2",5,7) }},5,16));
 }
 
 TEST_CASE("ReadWhileNotIgnoreEmptyLines", "[csv_reader]")
@@ -501,12 +444,11 @@ TEST_CASE("ReadWhileNotIgnoreEmptyLines", "[csv_reader]")
                       .withSeparator(';')
                       .withUsingEmptyLines()) == 
           TestStreamResult({ 
-              std::vector<std::string>{ "a1","a2","a3" },
-              std::vector<std::string>{ },
-              std::vector<std::string>{ "b1","b2" },
-              std::vector<std::string>{ },
-              std::vector<std::string>{ "c1","c2.1,c2.2" },
-                }));
+              { makeCell("a1",0,1), makeCell("a2",0,5), makeCell("a3",0,9) },
+              {},
+              { makeCell("b1",2,0), makeCell("b2",2,6) },
+              {},
+              { makeCell("c1",4,1), makeCell("c2.1,c2.2",4,7) }},5,0));
 
   csv = 
     "\"a\"\r\n"
@@ -521,12 +463,12 @@ TEST_CASE("ReadWhileNotIgnoreEmptyLines", "[csv_reader]")
                       .withSeparator(';')
                       .withUsingEmptyLines()) == 
           TestStreamResult({ 
-              std::vector<std::string>{ "a" },
-              std::vector<std::string>{ },
-              std::vector<std::string>{ },
-              std::vector<std::string>{ "b" },
-              std::vector<std::string>{ }
-      }));
+              { makeCell("a", 0,0) },
+              {},
+              {},
+              { makeCell("b", 3,0) },
+              {}},5,0));
+
   csv = 
     "\"a\",\r\n"
     "\n"
@@ -539,26 +481,28 @@ TEST_CASE("ReadWhileNotIgnoreEmptyLines", "[csv_reader]")
                       csv::Specification()
                       .withUsingEmptyLines()) == 
           TestStreamResult({ 
-              std::vector<std::string>{ "a","" },
-              std::vector<std::string>{ },
-              std::vector<std::string>{ "","","" },
-              std::vector<std::string>{ "","","" },
-              std::vector<std::string>{ "b","" },
-              std::vector<std::string>{ }
-      }));
+              { makeCell("a", 0,0), makeCell("",0,4) },
+              {},
+              { makeCell("",  2,0), makeCell("",2,1), makeCell("",2,2) },
+              { makeCell("",  3,0), makeCell("",3,1), makeCell("",3,2) },
+              { makeCell("b", 4,0), makeCell("",4,2) },
+              {}}, 6,0));
 }
 
 TEST_CASE("ReadOneRowWithMultipleSeparators", "[csv_reader]")
 {
-  
   REQUIRE(parseStream(" \n abc ,; def;ghi,1  \n\n",
                       csv::Specification()
                        .withSeparator(',')
                        .withSeparator(';')) ==
           TestStreamResult({ 
-              std::vector<std::string>{ "abc","","def","ghi","1" } 
-          }));
+              { makeCell("abc", 1,1), 
+                makeCell("",    1,6),
+                makeCell("def", 1,8),
+                makeCell("ghi", 1,12),
+                makeCell("1", 1,16) }},3,0));
 }
+
 
 TEST_CASE("ReadWhiteSpaceAsSeparator", "[csv_reader]")
 {
@@ -569,39 +513,37 @@ TEST_CASE("ReadWhiteSpaceAsSeparator", "[csv_reader]")
 
   REQUIRE(parseStream("  a  ", spec) == 
           TestStreamResult({ 
-              std::vector<std::string>{"a"} }));
-  REQUIRE(parseStream(" \"a\"  ", spec) == 
+              { makeCell("a", 0,2)}}, 0,5));
+  REQUIRE(parseStream("  \"a\"  ", spec) == 
           TestStreamResult({ 
-              std::vector<std::string>{"a"} }));
+              { makeCell("a", 0,2)}}, 0,7));
   REQUIRE(parseStream("a b", spec) == 
           TestStreamResult({ 
-              std::vector<std::string>{ "a","b"} }));
+              { makeCell("a", 0,0),
+                makeCell("b", 0,2) }}, 0,3));
   REQUIRE(parseStream("\"a\" \"b\"", spec) == 
           TestStreamResult({ 
-              std::vector<std::string>{ "a","b"} }));
-
+              { makeCell("a", 0,0),
+                makeCell("b", 0,4) }}, 0,7));
   REQUIRE(parseStream("  a   b  ", spec) == 
           TestStreamResult({ 
-              std::vector<std::string>{ "a","b"} }));
-
+              { makeCell("a", 0,2),
+                makeCell("b", 0,6) }}, 0,9));
   REQUIRE(parseStream("  \"a b \"  ", spec) == 
           TestStreamResult({ 
-              std::vector<std::string>{ "a b "} }));
-
+              { makeCell("a b ", 0,2) }},0,10));
   REQUIRE(parseStream("\"1\" 2 3\n"
                       "  \"1\"   2   3 \n"
                       "1 \"2\" 3\r\n"
                       "1  \"2\"  3 \r\n"
                       "1 2 \"3\"\r\n"
-                      "1 2 \"3\"    \n", spec) ==
-          TestStreamResult({ 
-              std::vector<std::string>{ "1","2","3"},
-              std::vector<std::string>{ "1","2","3"}, 
-              std::vector<std::string>{ "1","2","3"}, 
-              std::vector<std::string>{ "1","2","3"}, 
-              std::vector<std::string>{ "1","2","3"}, 
-              std::vector<std::string>{ "1","2","3"} 
-          }));
+                      "1 2 \"3\"    \n", spec) == TestStreamResult({ 
+  { makeCell("1", 0,0),makeCell("2", 0,4),makeCell("3", 0,6)},
+  { makeCell("1", 1,2),makeCell("2", 1,8),makeCell("3", 1,12)},
+  { makeCell("1", 2,0),makeCell("2", 2,2),makeCell("3", 2,6)},
+  { makeCell("1", 3,0),makeCell("2", 3,3),makeCell("3", 3,8)},
+  { makeCell("1", 4,0),makeCell("2", 4,2),makeCell("3", 4,4)},
+  { makeCell("1", 5,0),makeCell("2", 5,2),makeCell("3", 5,4)}},6,0));
 }
 
 TEST_CASE("ReadWhiteSpaceAsSeparatorAndUseEmptyLines", "[csv_reader]")
@@ -618,55 +560,81 @@ TEST_CASE("ReadWhiteSpaceAsSeparatorAndUseEmptyLines", "[csv_reader]")
                       "1 \"2\" 3\r\n"
                       "1  \"2\"  3 \r\n"
                       "1 2 \"3\"\r\n"
-                      "1 2 \"3\"    \n\r\n", spec) ==
-          TestStreamResult({ 
-              std::vector<std::string>{ "1","2","3"},
-              std::vector<std::string>{ },
-              std::vector<std::string>{ "1","2","3"}, 
-              std::vector<std::string>{ "1","2","3"}, 
-              std::vector<std::string>{ "1","2","3"}, 
-              std::vector<std::string>{ "1","2","3"}, 
-              std::vector<std::string>{ "1","2","3"},
-              std::vector<std::string>{ }
-          }));
-
+                      "1 2 \"3\"    \n\r\n", spec) == TestStreamResult({ 
+  { makeCell("1", 0,0),makeCell("2", 0,4),makeCell("3", 0,6)},
+  {},
+  { makeCell("1", 2,2),makeCell("2", 2,8),makeCell("3", 2,12)},
+  { makeCell("1", 3,0),makeCell("2", 3,2),makeCell("3", 3,6)},
+  { makeCell("1", 4,0),makeCell("2", 4,3),makeCell("3", 4,8)},
+  { makeCell("1", 5,0),makeCell("2", 5,2),makeCell("3", 5,4)},
+  { makeCell("1", 6,0),makeCell("2", 6,2),makeCell("3", 6,4)},
+  {}},8,0));
 }
+
 
 TEST_CASE("ReadCharWithCommentSymbol", "[csv_reader]")
 {
   auto spec = csv::Specification()
     .withComment('#');
-  REQUIRE(parseStream("   #",   spec) == TestStreamResult());
+
+  REQUIRE(parseStream("   #",   spec) == TestStreamResult(0,4));
+
   REQUIRE(parseStream(" \"#\"", spec) ==
           TestStreamResult({ 
-              std::vector<std::string>{ "#" }
-          }));
+              { makeCell("#", 0,1) }},0,4));
 
   REQUIRE(parseStream("   #\na",spec) ==
           TestStreamResult({ 
-              std::vector<std::string>{ "a" }
-          }));
+              { makeCell("a", 1,0) }},1,1));
+
   REQUIRE(parseStream("  a#,b,c,d\n1,2,3",spec) ==
           TestStreamResult({ 
-              std::vector<std::string>{ "a" },
-              std::vector<std::string>{ "1","2","3" }
-          }));
+          { makeCell("a", 0,2) },
+          { makeCell("1", 1,0), 
+            makeCell("2", 1,2), 
+            makeCell("3", 1,4)}},1,5));
+
   REQUIRE(parseStream("  a #,b,c,d\n1,2,3",spec) ==
           TestStreamResult({ 
-              std::vector<std::string>{ "a" },
-              std::vector<std::string>{ "1","2","3" }
-          }));
+          { makeCell("a", 0,2) },
+          { makeCell("1", 1,0), 
+            makeCell("2", 1,2), 
+            makeCell("3", 1,4)}},1,5));
+
   REQUIRE(parseStream("  \"a\"#,b,c,d\n1,2,3",spec) ==
           TestStreamResult({ 
-              std::vector<std::string>{ "a" },
-              std::vector<std::string>{ "1","2","3" }
-          }));
+          { makeCell("a", 0,2) },
+          { makeCell("1", 1,0), 
+            makeCell("2", 1,2), 
+            makeCell("3", 1,4)}},1,5));
 
   REQUIRE(parseStream("  \"a\" #,b,c,d\n1,2,3",spec) ==
           TestStreamResult({ 
-              std::vector<std::string>{ "a" },
-              std::vector<std::string>{ "1","2","3" }
-          }));
+          { makeCell("a", 0,2) },
+          { makeCell("1", 1,0), 
+            makeCell("2", 1,2), 
+            makeCell("3", 1,4)}},1,5));
+
+  REQUIRE(parseStream("  \"a\" , #,b,c,d\n1,2,3",spec) ==
+          TestStreamResult({ 
+          { makeCell("a", 0,2),makeCell("", 0,7) },
+          { makeCell("1", 1,0), 
+            makeCell("2", 1,2), 
+            makeCell("3", 1,4)}},1,5));
+
+
+  auto spec2 = csv::Specification()
+    .withoutSeparator()
+    .withSeparator(' ')
+    .withSeparator('\t')
+    .withComment('#');
+  REQUIRE(parseStream("  \"a\" # b c d\n1 2 3",spec2) ==
+          TestStreamResult({ 
+          { makeCell("a", 0,2) },
+          { makeCell("1", 1,0), 
+            makeCell("2", 1,2), 
+            makeCell("3", 1,4)}},1,5));
+  
 }
 
 
@@ -695,204 +663,6 @@ TEST_CASE("ReadAndCopyOneRow", "[csv_reader]")
   REQUIRE(c3.inputLine()   == 1u);
 }
 
-TEST_CASE("InputLineCountEmptyCells", "[csv_reader]")
-{
-  typedef TestStreamResult::row_position_type    row_position_type;
-  auto required = TestStreamResult::position_type{
-    row_position_type(0, { 
-                            std::make_pair(0,0),
-                            std::make_pair(0,1),
-                            std::make_pair(0,2) 
-                           }),
-    row_position_type(1, {
-                            std::make_pair(1,0),
-                            std::make_pair(1,1),
-                            std::make_pair(1,2) 
-                           }),
-    row_position_type(3, {
-                            std::make_pair(3,0),
-                            std::make_pair(3,1),
-                            std::make_pair(3,2) 
-                          })
-  };
-  REQUIRE(parseStream(",,\n,,\n\n,,") == required);
-}
-
-TEST_CASE("InputLineCount", "[csv_reader]")
-{
-  typedef TestStreamResult::row_position_type    row_position_type;
-  auto required = TestStreamResult::position_type{
-    row_position_type(0, { 
-                             std::make_pair(0,0),
-                             std::make_pair(0,2),
-                             std::make_pair(0,5) }),
-    row_position_type(1, {
-                            std::make_pair(1,0)
-                           }),
-    row_position_type(2, {
-                             std::make_pair(2,0)
-                           })
-  };
-  REQUIRE(parseStream("a,a2,a3\nb\nc") == required);
-}
-
-TEST_CASE("InputLineCountWithWhiteSpace", "[csv_reader]")
-{
-  typedef TestStreamResult::row_position_type    row_position_type;
-  auto required = TestStreamResult::position_type{
-    row_position_type(0, { 
-                            std::make_pair(0,2),
-                            std::make_pair(0,8),
-                            std::make_pair(0,15) }),
-    row_position_type(1, {
-                            std::make_pair(1,2)
-                           }),
-    row_position_type(2, {
-                             std::make_pair(2,1)
-                          })
-  };
-  REQUIRE(parseStream("  a  ,  a2  ,  a3  \n  b  \n c  \n") == required);
-}
-
-TEST_CASE("InputLineCountWithIgnoredEmptyLines", "[csv_reader]")
-{
-  typedef TestStreamResult::row_position_type row_position_type;
-  auto required = TestStreamResult::position_type{
-    row_position_type(1, {
-                            std::make_pair(1,0)
-                           }),
-    row_position_type(4, {
-                             std::make_pair(4,0)
-                         }),
-    row_position_type(5,{
-                           std::make_pair(5,0)
-                        })
-  };
-  REQUIRE(parseStream("\na\n\n\nb\nc\n") == required);
-}
-
-TEST_CASE("InputLineCountWithIgnoredEmptyLinesWithSpace", "[csv_reader]")
-{
-  typedef TestStreamResult::row_position_type row_position_type;
-  auto required = TestStreamResult::position_type{
-    row_position_type(1,{
-                           std::make_pair(1,1)
-                        }),
-    row_position_type(4,{
-                           std::make_pair(4,2)
-                        }),
-    row_position_type(5,{
-                           std::make_pair(5,3)
-                        })
-  };
-  REQUIRE(parseStream("   \n a\n\n\n  b\n   c   \n   ") == required);
-}
-
-TEST_CASE("InputLineCountUsingEmptyLines", "[csv_reader]")
-{
-  typedef TestStreamResult::row_position_type row_position_type;
-  auto spec = csv::Specification().withUsingEmptyLines();
-  auto required = TestStreamResult::position_type{
-    row_position_type(0),
-    row_position_type(1,{
-                           std::make_pair(1,0)
-                        }),
-    row_position_type(2),
-    row_position_type(3),
-    row_position_type(4, {
-                           std::make_pair(4,0)
-                         }),
-    row_position_type(5, {
-                           std::make_pair(5,0)
-                         })
-    // last newline ignored
-  };
-  REQUIRE(parseStream("\na\n\n\nb\nc\n", spec) == required);
-}
-
-TEST_CASE("InputLineCountUsingEmptyLinesWithWhiteSpaces", "[csv_reader]")
-{
-  typedef TestStreamResult::row_position_type row_position_type;
-  auto spec = csv::Specification().withUsingEmptyLines();
-  auto required = TestStreamResult::position_type{
-    row_position_type(0),
-    row_position_type(1,{
-                           std::make_pair(1,1)
-                        }),
-    row_position_type(2),
-    row_position_type(3),
-    row_position_type(4, {
-                           std::make_pair(4,2)
-                         }),
-    row_position_type(5, {
-                           std::make_pair(5,2)
-                         })
-    // last newline ignored
-  };
-  REQUIRE(parseStream("   \n a\n\n\n  b\n  c\n", spec) == required);
-}
-
-TEST_CASE("InputLineCountQuoted", "[csv_reader]")
-{
-  typedef TestStreamResult::row_position_type    row_position_type;
-  auto required = TestStreamResult::position_type{
-    row_position_type(0, { 
-                           std::make_pair(0,0),
-                           std::make_pair(0,4),
-                           std::make_pair(0,9) }),
-    row_position_type(1, {
-                           std::make_pair(1,0),
-                           std::make_pair(1,4),
-                           std::make_pair(1,9)
-                         }),
-    row_position_type(2, {
-                           std::make_pair(2,0)
-                         })
-  };
-  REQUIRE(parseStream("\"a\",\"a2\",\"a3\"\n\"b\",\"b2\",\nc") == required);
-}
-
-TEST_CASE("InputLineCountQuotedWithWhiteSpace", "[csv_reader]")
-{
-  typedef TestStreamResult::row_position_type    row_position_type;
-  auto required = TestStreamResult::position_type{
-    row_position_type(0, { 
-                           std::make_pair(0,1),
-                           std::make_pair(0,5),
-                           std::make_pair(0,10) }),
-    row_position_type(1, {
-                           std::make_pair(1,0),
-                           std::make_pair(1,6),
-                           std::make_pair(1,11)
-                         }),
-    row_position_type(2, {
-                           std::make_pair(2,1)
-                         })
-  };
-  REQUIRE(parseStream(" \"a\",\"a2\",\"a3\"\n\"b\",  \"b2\",\n \"c\"") == 
-          required);
-}
-
-TEST_CASE("InputLineCountQuotedWithNewline", "[csv_reader]")
-{
-  typedef TestStreamResult::row_position_type    row_position_type;
-  auto required = TestStreamResult::position_type{
-    row_position_type(0, { 
-                           std::make_pair(0,1),
-                           std::make_pair(2,2),
-                           std::make_pair(2,7) }),
-    row_position_type(3, {
-                           std::make_pair(3,0),
-                           std::make_pair(3,6),
-                           std::make_pair(4,3)
-                         }),
-    row_position_type(5, {
-                           std::make_pair(5,1)
-                         })
-  };
-  REQUIRE(parseStream(" \"a\n\n\",\"a2\",\"a3\"\n\"b\",  \"b\n2\",\n \"c\"") == 
-          required);
-}
 
 TEST_CASE("ReadWithHeader", "[csv_reader]")
 {
@@ -905,9 +675,9 @@ TEST_CASE("ReadWithHeader", "[csv_reader]")
   std::stringstream ss("0,1,2,3,4,5,6,7\n8,9");
   csv::Reader reader(ss, spec); 
   auto itr = reader.begin();
-  auto row1 = *itr;
-  ++itr;
+  auto row1 = *itr; ++itr;
   auto row2 = *itr;
+
   REQUIRE(row1[0].name() == "first");
   REQUIRE(row1[1].name() == "second");
   REQUIRE(row1[2].name() == "third");
@@ -916,6 +686,7 @@ TEST_CASE("ReadWithHeader", "[csv_reader]")
   REQUIRE(row1[5].name() == "sixth");
   REQUIRE(row1[6].name() == "");
   REQUIRE(row1[7].name() == "");
+
   REQUIRE(row1["first"].as<int>()  == 0);
   REQUIRE(row1["second"].as<int>() == 1);
   REQUIRE(row1["third"].as<int>()  == 2);
@@ -956,10 +727,10 @@ TEST_CASE("ReadWithHeaderFromCsvFile", "[csv_reader]")
   REQUIRE_THROWS(row2["third"].name());
 }
 
+
 TEST_CASE("ReadWithHeaderWithDuplicateHeaderThrows", "[csv_reader]")
 {
   auto spec = csv::Specification().withHeader();
-  
   std::stringstream ss("\nfirst,second,first,,,sixth\n0,1,2,3,4,5,6,7\n8,9");
   bool caught = false;
   try 
@@ -969,7 +740,7 @@ TEST_CASE("ReadWithHeaderWithDuplicateHeaderThrows", "[csv_reader]")
   catch( csv::DuplicateColumnError ex) 
   {
     caught = true;
-    REQUIRE(ex.inputLine()     == 1u);
+    REQUIRE(ex.inputLine()     == 0u);
     REQUIRE(ex.inputColumn()   == 13u);
     REQUIRE(ex.row()           == 0u);
     REQUIRE(ex.column()        == 2u);
@@ -996,6 +767,42 @@ TEST_CASE("CharacterAfterClosingQuotedColumnThrows", "[csv_reader]")
   REQUIRE(caught);
 }
 
+TEST_CASE("UnexpectedEndOfFileThrows", "[csv_reader]")
+{
+  bool caught = false;
+  try 
+  {
+    parseStream(",\"abc");
+  }
+  catch(csv::ParseError ex)
+  {
+    REQUIRE(ex.inputLine()   == 0);
+    REQUIRE(ex.inputColumn() == 5);
+    REQUIRE(ex.row()         == 0);
+    REQUIRE(ex.column()      == 1);
+    caught = true;
+  }
+  REQUIRE(caught);
+}
+
+TEST_CASE("CharacterAfterWhiteSpaceThrows", "[csv_reader]")
+{
+  bool caught = false;
+  try 
+  {
+    parseStream("a\nb\n\"c1\",\"c2\" x,c3");
+  }
+  catch(csv::ParseError ex)
+  {
+    REQUIRE(ex.inputLine()   == 2);
+    REQUIRE(ex.inputColumn() == 10);
+    REQUIRE(ex.row()         == 2);
+    REQUIRE(ex.column()      == 1);
+    caught = true;
+  }
+  REQUIRE(caught);
+}
+
 TEST_CASE("CellAccessorBoundChecksThrowsWithCorrectCoordinates","[csv_reader]")
 {
   std::stringstream ss("0,1,2,3,4,5,6,7\n8,9\n\n10,11");
@@ -1014,9 +821,9 @@ TEST_CASE("CellAccessorBoundChecksThrowsWithCorrectCoordinates","[csv_reader]")
     REQUIRE(ex.index() == 8);
     REQUIRE(ex.size()  == 8);
     REQUIRE(ex.inputLine() == 0);
-    REQUIRE(ex.inputColumn() == 14);
+    REQUIRE(ex.inputColumn() == 0);
     REQUIRE(ex.row() == 0);
-    REQUIRE(ex.column() == 7);
+    REQUIRE(ex.column() == 0);
     caught1 = true;
   }
   try
@@ -1029,9 +836,9 @@ TEST_CASE("CellAccessorBoundChecksThrowsWithCorrectCoordinates","[csv_reader]")
     REQUIRE(ex.index() == 3);
     REQUIRE(ex.size()  == 2);
     REQUIRE(ex.inputLine() == 1);
-    REQUIRE(ex.inputColumn() == 2);
+    REQUIRE(ex.inputColumn() == 0);
     REQUIRE(ex.row() == 1);
-    REQUIRE(ex.column() == 1);
+    REQUIRE(ex.column() == 0);
     caught2 = true;
   }
   try
@@ -1044,10 +851,10 @@ TEST_CASE("CellAccessorBoundChecksThrowsWithCorrectCoordinates","[csv_reader]")
   {
     REQUIRE(ex.index() == 3);
     REQUIRE(ex.size()  == 2);
-    REQUIRE(ex.inputLine() == 3);
-    REQUIRE(ex.inputColumn() == 3);
+    REQUIRE(ex.inputLine() == 2);
+    REQUIRE(ex.inputColumn() == 0);
     REQUIRE(ex.row() == 2);
-    REQUIRE(ex.column() == 1);
+    REQUIRE(ex.column() == 0);
     caught3 = true;
   }
   REQUIRE(caught1);
@@ -1074,9 +881,9 @@ TEST_CASE("CellAccessorUndefinedColumns","[csv_reader]")
   {
     REQUIRE(ex.size()        == 4);
     REQUIRE(ex.inputLine()   == 1);
-    REQUIRE(ex.inputColumn() == 6);
+    REQUIRE(ex.inputColumn() == 0);
     REQUIRE(ex.row()         == 1);
-    REQUIRE(ex.column()      == 3);
+    REQUIRE(ex.column()      == 0);
     caught1 = true;
   }
   try
@@ -1089,11 +896,12 @@ TEST_CASE("CellAccessorUndefinedColumns","[csv_reader]")
     REQUIRE(ex.index()       == 7);
     REQUIRE(ex.size()        == 3);
     REQUIRE(ex.inputLine()   == 2);
-    REQUIRE(ex.inputColumn() == 4);
+    REQUIRE(ex.inputColumn() == 0);
     REQUIRE(ex.row()         == 2);
-    REQUIRE(ex.column()      == 2);
+    REQUIRE(ex.column()      == 0);
     caught2 = true;
   }
   REQUIRE(caught1);
   REQUIRE(caught2);
 }
+
