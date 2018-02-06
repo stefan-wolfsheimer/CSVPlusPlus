@@ -70,8 +70,8 @@ namespace csv
       iterator();
       inline iterator& operator++();
       inline iterator& operator++(int);
-      inline bool operator==(const iterator & rhs);
-      inline bool operator!=(const iterator & rhs);
+      inline bool operator==(const iterator & rhs) const;
+      inline bool operator!=(const iterator & rhs) const;
     };
 
     BasicReader(istream_type & _ist, spec_type _specs = spec_type());
@@ -220,14 +220,14 @@ namespace csv
 
   template<typename CHAR, typename TRAITS>
   inline bool 
-  BasicReader<CHAR,TRAITS>::iterator::operator==(const iterator & rhs) 
+  BasicReader<CHAR,TRAITS>::iterator::operator==(const iterator & rhs) const
   { 
     return reader == rhs.reader; 
   }
       
   template<typename CHAR, typename TRAITS>
   inline bool 
-  BasicReader<CHAR,TRAITS>::iterator::operator!=(const iterator & rhs) 
+  BasicReader<CHAR,TRAITS>::iterator::operator!=(const iterator & rhs) const
   { 
     return reader != rhs.reader; 
   }

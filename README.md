@@ -20,13 +20,12 @@ Requirements & Installation
 This is a header only library. Just include the subdirectory "csv" in your 
 project.
 
-- C++11 compiler (tested so far with gcc version 4.8.3)
-- (optional) unix make or cmake to build examples and unit tests
+- C++11 compiler (tested with gcc 4.8.3, gcc 5.4.0)
+- (optional) cmake to build examples and unit tests
 
 Credits
 -------
- 
-- [philsquared/Catch forwork for unit-tests](https://github.com/philsquared/Catch), see LICENSE_3RD_PARTY
+- [A modern, C++-native, header-only, test framework for unit-tests, TDD and BDD](https://github.com/catchorg/Catch2)
 
 
 Usage at a glance
@@ -65,6 +64,25 @@ Usage at a glance
   }
 ```
 
+
+Building examples and unit tests
+--------------------------------
+* checkout dependent submodule:
+```
+git submodule update --init --recursive
+```
+* create working directory and build
+```
+CSVPlusPlus> mkdir build
+CSVPlusPlus/build> cd build
+CSVPlusPlus/build> cmake ../
+CSVPlusPlus/build> make
+```
+
+* run the tests
+```
+CSVPlusPlus/build> test/runtests
+```
 
 
 ### Specification

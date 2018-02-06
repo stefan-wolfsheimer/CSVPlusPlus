@@ -29,8 +29,8 @@ of the authors and should not be interpreted as representing official policies,
 either expressed or implied, of the FreeBSD Project.
 ******************************************************************************/
 
-#include "catch.hpp"
-#include "csv/reader.h"
+#include <catch.hpp>
+#include <csv/reader.h>
 #include <iostream>
 #include <limits>
 
@@ -104,7 +104,7 @@ struct TestStreamResult
   }
 
 
-  bool operator==(const TestStreamResult & rhs) 
+  bool operator==(const TestStreamResult & rhs) const
   {
     return 
       result       == rhs.result && 
@@ -112,7 +112,7 @@ struct TestStreamResult
       csv_cells_ok == rhs.csv_cells_ok;
   }
 
-  bool operator==(const position_type & rhs) 
+  bool operator==(const position_type & rhs) const
   {
     if(positions.size() != rhs.size()) 
     {
