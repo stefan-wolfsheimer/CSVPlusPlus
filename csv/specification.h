@@ -60,19 +60,18 @@ namespace csv
     
     inline BasicSpecification& withUsingEmptyLines();
     inline BasicSpecification& withoutUsingEmptyLines();
-    inline bool hasUsingEmptyLines() const;
+    inline bool isUsingEmptyLines() const;
 
     ///////////////////////////////////////////////
-    inline BasicSpecification& withSeparator(char_type ch);
-    inline BasicSpecification& withoutSeparator();
-    inline BasicSpecification& withoutSeparator(char_type ch);
+    inline BasicSpecification& withSeparator(const string_type & seps);
     inline bool isSeparator(char_type ch) const;
     inline bool hasSeparator() const;
     inline char_type defaultSeparator() const;
 
     ///////////////////////////////////////////////
     inline BasicSpecification& withLocale(const ::std::locale & loc);
-    const ::std::locale& locale() const;
+    inline BasicSpecification& withDecimalSeparator(char_type ch);
+    inline const ::std::locale& locale() const;
 
     ///////////////////////////////////////////////
     inline BasicSpecification& withComment(char_type ch);
@@ -94,7 +93,21 @@ namespace csv
     private:
       ::std::size_t _index;
       string_type   _name;
+    };
 
+    class DecimalSeparator : public std::numpunct<char_type>
+    {
+    public:
+      DecimalSeparator(char_type ch)
+        : separator(ch)
+      {}
+    protected:
+      char_type do_decimal_point()const
+      {
+        return separator;
+      }
+    private:
+      char_type separator;
     };
 
     friend class BasicCell<char_type,   char_traits>;
@@ -177,52 +190,30 @@ namespace csv
   }
 
   template<typename CHAR, typename TRAITS>
-  inline bool BasicSpecification<CHAR, TRAITS>::hasUsingEmptyLines() const 
+  inline bool BasicSpecification<CHAR, TRAITS>::isUsingEmptyLines() const
   {
     return _flags & _use_empty_lines;
   }
 
   template<typename CHAR, typename TRAITS>
   inline BasicSpecification<CHAR, TRAITS>& 
-  BasicSpecification<CHAR, TRAITS>::withSeparator(char_type ch)
-  {
-    for(auto item : _separators) 
-    {
-      if(item == ch) 
-      {
-        return *this;
-      }
-    }
-    _separators.push_back(ch);
-    if(_separators.size() == 1u) 
-    {
-      _default_separator = ch;
-    }
-    return *this;
-  }
-
-  template<typename CHAR, typename TRAITS>
-  inline BasicSpecification<CHAR, TRAITS>& 
-  BasicSpecification<CHAR, TRAITS>::withoutSeparator()
+  BasicSpecification<CHAR, TRAITS>::withSeparator(const string_type & seps)
   {
     _separators.clear();
-    _default_separator = '\0';
-    return *this;
-  }
-
-  template<typename CHAR, typename TRAITS>
-  inline BasicSpecification<CHAR, TRAITS>& 
-  BasicSpecification<CHAR, TRAITS>::withoutSeparator(char_type ch)
-  {
-    _separators.erase(std::remove(_separators.begin(), 
-                                  _separators.end(), 
-                                  ch));
-    if( _default_separator == ch) 
+    for(auto ch : seps)
     {
-      _default_separator = 
-        _separators.empty() ? 
-        '\0' : 
-        _separators.front();
+      for(auto item : _separators)
+      {
+        if(item == ch)
+        {
+          continue;
+        }
+      }
+      _separators.push_back(ch);
+      if(_separators.size() == 1u)
+      {
+        _default_separator = ch;
+      }
     }
     return *this;
   }
@@ -261,6 +252,15 @@ namespace csv
   {
     _locale=loc;
     return *this;
+  }
+
+  template<typename CHAR, typename TRAITS>
+  inline BasicSpecification<CHAR, TRAITS>&
+  BasicSpecification<CHAR, TRAITS>::withDecimalSeparator(CHAR ch)
+  {
+    typedef typename BasicSpecification<CHAR, TRAITS>::DecimalSeparator
+      dec_sep_type;
+    return withLocale(std::locale(std::locale(),new dec_sep_type(ch)));
   }
 
   template<typename CHAR, typename TRAITS>

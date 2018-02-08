@@ -475,8 +475,7 @@ TEST_CASE("ReadMatrix", "[csv_reader]")
     " c1 ;  c2.1,c2.2";
   REQUIRE(parseStream(csv,
                       csv::Specification()
-                        .withoutSeparator(',')
-                        .withSeparator(';')) == 
+                        .withSeparator(";")) ==
           TestStreamResult({ 
               std::vector<std::string>{ "a1","a2","a3" },
               std::vector<std::string>{ "b1","b\n2" },
@@ -497,8 +496,7 @@ TEST_CASE("ReadWhileNotIgnoreEmptyLines", "[csv_reader]")
     "\r\n";
   REQUIRE(parseStream(csv,
                       csv::Specification()
-                      .withoutSeparator(',')
-                      .withSeparator(';')
+                      .withSeparator(";")
                       .withUsingEmptyLines()) == 
           TestStreamResult({ 
               std::vector<std::string>{ "a1","a2","a3" },
@@ -517,8 +515,7 @@ TEST_CASE("ReadWhileNotIgnoreEmptyLines", "[csv_reader]")
     "\r\n";
   REQUIRE(parseStream(csv,
                       csv::Specification()
-                      .withoutSeparator(',')
-                      .withSeparator(';')
+                      .withSeparator(";")
                       .withUsingEmptyLines()) == 
           TestStreamResult({ 
               std::vector<std::string>{ "a" },
@@ -553,8 +550,7 @@ TEST_CASE("ReadOneRowWithMultipleSeparators", "[csv_reader]")
   
   REQUIRE(parseStream(" \n abc ,; def;ghi,1  \n\n",
                       csv::Specification()
-                       .withSeparator(',')
-                       .withSeparator(';')) ==
+                       .withSeparator(",;")) ==
           TestStreamResult({ 
               std::vector<std::string>{ "abc","","def","ghi","1" } 
           }));
@@ -563,9 +559,7 @@ TEST_CASE("ReadOneRowWithMultipleSeparators", "[csv_reader]")
 TEST_CASE("ReadWhiteSpaceAsSeparator", "[csv_reader]")
 {
   auto spec = csv::Specification()
-    .withoutSeparator()
-    .withSeparator(' ')
-    .withSeparator('\t');
+    .withSeparator(" \t");
 
   REQUIRE(parseStream("  a  ", spec) == 
           TestStreamResult({ 
@@ -609,9 +603,7 @@ TEST_CASE("ReadWhiteSpaceAsSeparatorAndUseEmptyLines", "[csv_reader]")
 
   auto spec = 
     csv::Specification()
-     .withoutSeparator()
-     .withSeparator(' ')
-     .withSeparator('\t')
+     .withSeparator(" \t")
      .withUsingEmptyLines();
   REQUIRE(parseStream("\"1\" 2 3\n  \t  \n"
                       "  \"1\"   2   3 \n"

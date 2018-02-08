@@ -87,18 +87,36 @@ CSVPlusPlus/build> test/runtests
 
 ### Specification
 
-TODO: more details here
+Instances of the Specification object define the details of the CSV dialect.
+It is possible to configure the column separator, the locale (for parsing numbers), whether or not using the
+first row as header, defining a character for indicating comment lines (the rest of the line is being ignored) and
+whether or not empty lines should be ignored in the stream.
 
-| property       | construction                                                    | test                               |
-|----------------|-----------------------------------------------------------------|------------------------------------|
-|Separator       | `withSeparator(char_type ch)`, `withoutSeparator(char_type ch)` | `bool isSeparator(char_type)`      |
-|Locale          | `withLocale(std::locale l)`                                     | `std::locale locale()`             |
-|Header          | `withHeader()`, `withoutHeader()`                               | `bool hasHeader()`                 |
-|Column          | `withColumn(size_t, string_type)`                               |                                    |
-|Comment         | `withComment(char_type ch)`, `withoutComment()`                 | `bool isComment(char_type)`        |
-|UsingEmptyLines | `withUsingEmptyLines()`, `withoutUsingEmptyLines()`             | `bool hasUsingEmptyLines()`        |
+| property       | construction                                                    | test                               | default
+|----------------|-------------------------------------------------------|------------------------------------|---------
+|Separator       | `withSeparator(const string_type & seps)`             | `bool isSeparator(char_type)`      | ,
+|Locale          | `withLocale(std::locale l)`                           | `std::locale locale()`             | system locale
+|DecimalSeparatpr| `withDecimalSeparator(char_type ch)`                  |                                    | from seystem locale
+|Header          | `withHeader()`, `withoutHeader()`                     | `bool hasHeader()`                 | false
+|Column          | `withColumn(size_t, string_type)`                     |                                    | 
+|Comment         | `withComment(char_type ch)`, `withoutComment()`       | `bool isComment(char_type)`        | false
+|UsingEmptyLines | `withUsingEmptyLines()`, `withoutUsingEmptyLines()`   | `bool isUsingEmptyLines()`         | false
 
+The following example (from example/04_specification.cpp) constructs a csv::Reader for which all column names are
+determined from the first line except for column 4 and 5 (0 based counting). The decimal separator is configured as `,`.
+Both `|` and `;` are accepted as column separators. Line content after `#` is ignored and empty lines are not considered.
 
+```c++
+  csv::Reader reader(ist,
+                     csv::Specification()
+                     .withHeader()
+                     .withDecimalSeparator(',')
+                     .withSeparator("|;")
+                     .withComment('#')
+                     .withoutUsingEmptyLines()
+                     .withColumn(4, "Orbital period")
+                     .withColumn(5, "Rotation period"));
+```
 
 ### Exceptions
 

@@ -137,6 +137,17 @@ TEST_CASE("ConstructionWithLocale", "[csv_specification]")
   REQUIRE(s.str() == "1@234");
 }
 
+TEST_CASE("ConstructionWithDecimalSeparator", "[csv_specification]")
+{
+
+  auto spec = csv::Specification()
+    .withDecimalSeparator(',');
+  std::ostringstream s;
+  s.imbue(spec.locale());
+  s << double(1.234);
+  REQUIRE(s.str() == "1,234");
+}
+
 TEST_CASE("ConstructionWithoutSeparator", "[csv_specification]")
 {
   // no separator

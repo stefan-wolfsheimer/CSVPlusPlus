@@ -377,7 +377,7 @@ namespace csv
     }
     else if( isNewline(ch) )
     {
-      if( _specs->hasUsingEmptyLines() ) 
+      if( _specs->isUsingEmptyLines() )
       {
         flush();
         _last_input_line = _current_input_line;
@@ -403,7 +403,7 @@ namespace csv
     else if( _specs->isComment(ch))
     {
       _state = State::COMMENT;
-      if( _specs->hasUsingEmptyLines() ) 
+      if( _specs->isUsingEmptyLines() )
       {
         _csv_column = 0;
         _csv_row++;
