@@ -65,11 +65,11 @@ namespace csv
       row_type      row;
       iterator(BasicReader * _reader);
     public:
-      inline const row_type& operator*()  const;
+      inline const row_type&  operator*()  const;
       inline const row_type* operator->() const;
       iterator();
       inline iterator& operator++();
-      inline iterator& operator++(int);
+      inline iterator  operator++(int);
       inline bool operator==(const iterator & rhs) const;
       inline bool operator!=(const iterator & rhs) const;
     };
@@ -166,7 +166,7 @@ namespace csv
   }
 
   template<typename CHAR, typename TRAITS>
-  inline const typename BasicReader<CHAR,TRAITS>::row_type& 
+  inline const typename BasicReader<CHAR,TRAITS>::row_type&
   BasicReader<CHAR,TRAITS>::iterator::operator*()  const 
   { 
     return row;  
@@ -210,7 +210,7 @@ namespace csv
   }
 
   template<typename CHAR, typename TRAITS>
-  inline typename BasicReader<CHAR,TRAITS>::iterator& 
+  inline typename BasicReader<CHAR,TRAITS>::iterator
   BasicReader<CHAR,TRAITS>::iterator::operator++(int) 
   {
     iterator tmp = *this;
