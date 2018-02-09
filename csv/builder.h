@@ -33,6 +33,7 @@ either expressed or implied, of the FreeBSD Project.
 #include <memory>
 #include <vector>
 #include <string>
+#include <ostream>
 #include <type_traits>
 #include "csv_common.h"
 #include "serializer.h"
@@ -54,6 +55,7 @@ public:
   virtual void parse(object_type & cls, const string_type & str) const = 0;
   virtual void parse(object_type & cls, const string_type & str, const::std::locale & locale) const = 0;
   virtual string_type getName() const = 0;
+  virtual void streamOut(::std::ostream & ost, const object_type & obj) = 0;
 };
 
 template<typename OBJECT, typename MEMBER, typename CHAR, typename TRAITS>
@@ -98,6 +100,11 @@ public:
   {
     typedef BasicSerializer<char_type, char_traits, member_type> serializer_type;
     obj.*_pointerToMember = serializer_type::as(str, locale);
+  }
+
+  virtual void streamOut(::std::ostream & ost, const object_type & obj) override
+  {
+    ost << obj.*_pointerToMember;
   }
 
 private:
