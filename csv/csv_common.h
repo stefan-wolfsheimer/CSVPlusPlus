@@ -37,41 +37,33 @@ either expressed or implied, of the FreeBSD Project.
 
 namespace csv
 {
-  template<typename CHAR=char, typename TRAITS=::std::char_traits<CHAR>>
+  typedef ::std::char_traits<char> char_traits;
+  typedef ::std::char_traits<wchar_t> wchar_traits;
+
+  template<typename CHAR=char, typename TRAITS=::std::char_traits<CHAR> >
   class BasicSpecification;
 
-  template<typename CHAR=char, typename TRAITS=::std::char_traits<CHAR>>
+  template<typename CHAR=char, typename TRAITS=::std::char_traits<CHAR> >
   class BasicCell;
 
-  template<typename CHAR=char, typename TRAITS=::std::char_traits<CHAR>>
+  template<typename CHAR=char, typename TRAITS=::std::char_traits<CHAR> >
   class BasicRow;
 
   template<typename CHAR=char, typename TRAITS=::std::char_traits<CHAR> >
   class BasicReader;
 
-  typedef BasicSpecification<char,    ::std::char_traits<char> >    
-  Specification;
+  template<typename CLASS, typename CHAR=char,
+           typename TRAITS=::std::char_traits<CHAR> >
+  class BasicObjectReader;
 
-  typedef BasicCell<char,             ::std::char_traits<char> >             
-  Cell;
-
-  typedef BasicRow<char,              ::std::char_traits<char> >    
-  Row;
-
-  typedef BasicReader<char,           ::std::char_traits<char> >    
-  Reader;
-  
-  typedef BasicSpecification<wchar_t, ::std::char_traits<wchar_t> >     
-  WSpecification;
-
-  typedef BasicCell<wchar_t,          ::std::char_traits<wchar_t> >    
-  WCell;
-  
-  typedef BasicRow<wchar_t,           ::std::char_traits<wchar_t> >    
-  WRow;
-
-  typedef BasicReader<wchar_t,        ::std::char_traits<wchar_t> >    
-  WReader;
+  typedef BasicSpecification<char, char_traits> Specification;
+  typedef BasicCell<char, char_traits> Cell;
+  typedef BasicRow<char, char_traits> Row;
+  typedef BasicReader<char, char_traits> Reader;
+  typedef BasicSpecification<wchar_t, wchar_traits> WSpecification;
+  typedef BasicCell<wchar_t, wchar_traits> WCell;
+  typedef BasicRow<wchar_t, wchar_traits> WRow;
+  typedef BasicReader<wchar_t, wchar_traits> WReader;
 
   class CsvException : public ::std::exception
   {

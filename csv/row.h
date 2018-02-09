@@ -86,7 +86,8 @@ namespace csv
 
     inline const cell_type & operator[](std::size_t i) const;
     inline const cell_type & operator[](const string_type & name) const ;
-    
+    inline const_iterator find(const string_type & name) const;
+
     inline ::std::size_t inputLine() const        { return _input_line; }
     inline ::std::size_t row() const              { return _row; }
 
@@ -104,21 +105,15 @@ namespace csv
     ::std::size_t                                      _row;
     cell_vector_type                                   _cells;
 
-    ::std::size_t initColumn(const char_type * str, 
-                             ::std::size_t       j, 
-                             buffer_type *     _tmp_buffer);
-    std::size_t initColumn(const string_type & str, 
-                           std::size_t         j, 
-                           buffer_type       * _tmp_buffer);
+    ::std::size_t initColumn(const char_type * str, ::std::size_t j, buffer_type * _tmp_buffer);
+    std::size_t initColumn(const string_type & str, ::std::size_t j, buffer_type * _tmp_buffer);
 
     template<typename ITER>
     void init(const ITER & begin, const ITER & end, std::forward_iterator_tag);
 
-    inline 
-    void getLastRowColumnInputColumn(::std::size_t & csv_row,
-                                     ::std::size_t & csv_column,
-                                     ::std::size_t & input_column) const;
-
+    inline void getLastRowColumnInputColumn(::std::size_t & csv_row,
+                                            ::std::size_t & csv_column,
+                                            ::std::size_t & input_column) const;
   };
 
   //////////////////////////////////////////////////////////////////////
@@ -321,10 +316,31 @@ namespace csv
   }
 
   template<typename CHAR, typename TRAITS>
-  ::std::size_t 
-  BasicRow<CHAR,TRAITS>::initColumn(const char_type * str, 
-                                    ::std::size_t       j, 
-                                    buffer_type *     _tmp_buffer) 
+  typename BasicRow<CHAR,TRAITS>::const_iterator BasicRow<CHAR,TRAITS>::find(const string_type & name) const
+  {
+    auto itr = _shared_spec->_lookup.find(name);
+    if(itr == _shared_spec->_lookup.end())
+    {
+      //return end();
+    }
+    else
+    {
+      std::size_t i = itr->second->index();
+      if(i >= _cells.size())
+      {
+        //return end();
+      }
+      else
+      {
+        return _cells.begin() + i;
+      }
+    }
+  }
+
+  template<typename CHAR, typename TRAITS>
+  ::std::size_t BasicRow<CHAR,TRAITS>::initColumn(const char_type * str,
+                                                  ::std::size_t j,
+                                                  buffer_type * _tmp_buffer)
   {
     while(*str) 
     {
@@ -339,7 +355,7 @@ namespace csv
   ::std::size_t 
   BasicRow<CHAR,TRAITS>::initColumn(const string_type & str, 
                                     std::size_t         j, 
-                                    buffer_type       * _tmp_buffer) 
+                                    buffer_type       * _tmp_buffer)
   {
     for(auto itr = str.begin(); itr != str.end(); ++itr) 
     {
@@ -353,7 +369,7 @@ namespace csv
   template<typename ITER>
   void BasicRow<CHAR,TRAITS>::init( const ITER & begin, 
                                     const ITER & end, 
-                                    std::forward_iterator_tag )
+                                    std::forward_iterator_tag)
   {
     buffer_type * _tmp = new buffer_type();
     _shared_buffer = shared_buffer_type(_tmp);

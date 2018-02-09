@@ -34,47 +34,11 @@ either expressed or implied, of the FreeBSD Project.
 #include <iostream>
 #include <memory>
 #include "csv_common.h"
+#include "serializer.h"
 #include "specification.h"
 
 namespace csv
 {
-  template<typename CHAR, typename TRAITS, typename TARGET>
-  class BasicSerializer 
-  {
-  public:
-    typedef CHAR                                            char_type;
-    typedef TRAITS                                          char_traits;
-    typedef TARGET                                          return_type;
-    typedef std::basic_string<char_type, char_traits>       string_type;
-    typedef std::basic_stringstream<char_type, char_traits> stream_type;
-    typedef BasicSpecification<char_type, char_traits>      spec_type;    
-    typedef std::shared_ptr<spec_type>                      shared_spec_type;
-    typedef BasicCell<char_type, char_traits>               cell_type;
-
-
-    template<typename ITER>
-    static return_type as(const cell_type        & cell,
-                          ITER                     begin, 
-                          ITER                     end);
-  };
-
-  template<typename CHAR, typename TRAITS>
-  class BasicSerializer<CHAR, TRAITS, std::basic_string<CHAR, TRAITS> >
-  {
-  public:
-    typedef CHAR                                            char_type;
-    typedef TRAITS                                          char_traits;
-    typedef ::std::basic_string<char_type, char_traits>     string_type;
-    typedef BasicSpecification<char_type, char_traits>      spec_type;    
-    typedef std::shared_ptr<spec_type>                      shared_spec_type;
-    typedef BasicCell<char_type, char_traits>               cell_type;
-    
-    template<typename ITER>
-    static string_type as(const cell_type  & cell,
-                          ITER               begin, 
-                          ITER               end);
-  };
-
   template<typename CHAR, typename TRAITS>
   class BasicCell
   {
@@ -84,6 +48,9 @@ namespace csv
     typedef std::basic_string<char_type, char_traits>  string_type;
     typedef BasicSpecification<char_type, char_traits> spec_type;    
     typedef std::shared_ptr<spec_type>                 shared_spec_type;
+    typedef std::vector<char_type>                     buffer_type;
+    typedef std::shared_ptr<buffer_type>               shared_buffer_type;
+    typedef typename buffer_type::const_iterator       const_iterator;
 
     BasicCell(spec_type           specs = spec_type());
 
@@ -95,6 +62,9 @@ namespace csv
               const string_type & name = string_type());
 
     BasicCell(const BasicCell & rhs);
+
+    const_iterator begin() const;
+    const_iterator end() const;
 
     template<typename RET> 
     RET as() const;
@@ -125,9 +95,6 @@ namespace csv
                  ::std::size_t input_line   = 0,
                  ::std::size_t input_column = 0);
     };
-    typedef std::vector<char_type>                     buffer_type;
-    typedef std::shared_ptr<buffer_type>               shared_buffer_type;
-    typedef typename buffer_type::const_iterator       buffer_iterator;
     typedef typename spec_type::Column                 column_type;
     typedef std::shared_ptr<column_type>               shared_column_type;
 
@@ -174,7 +141,7 @@ namespace csv
   template<typename CHAR, typename TRAITS>
   inline
   BasicCell<CHAR,TRAITS>::BasicCell(const string_type & str, 
-                                    const string_type & name) 
+                                    const string_type & name)
     : _specs(std::make_shared<spec_type>()),
       _shared_column(std::make_shared<column_type>(0,name)),
       _shared_buffer(string2buffer(str)),
@@ -184,7 +151,7 @@ namespace csv
 
   template<typename CHAR, typename TRAITS> 
   inline
-  BasicCell<CHAR,TRAITS>::BasicCell(const BasicCell & rhs) 
+  BasicCell<CHAR,TRAITS>::BasicCell(const BasicCell & rhs)
     : _specs(rhs._specs),
       _shared_column(rhs._shared_column),
       _shared_buffer(rhs._shared_buffer),
@@ -204,17 +171,40 @@ namespace csv
   {
   }
 
+  template<typename CHAR, typename TRAITS> 
+  inline typename BasicCell<CHAR,TRAITS>::const_iterator
+  BasicCell<CHAR,TRAITS>::begin() const
+  {
+    _shared_buffer->begin() + _range._begin;
+  }
+
+  template<typename CHAR, typename TRAITS> 
+  inline typename BasicCell<CHAR,TRAITS>::const_iterator
+  BasicCell<CHAR,TRAITS>::end() const
+  {
+    _shared_buffer->begin() + _range._end;
+  }
+
+
   template<typename CHAR, typename TRAITS>
   template<typename RET> 
-  inline RET 
-  BasicCell<CHAR,TRAITS>::as() const 
+  inline RET BasicCell<CHAR,TRAITS>::as() const
   {
-    return 
-      BasicSerializer<char_type, 
-                      char_traits,
-                      RET>::as(*this, 
-                               _shared_buffer->begin() + _range._begin,
-                               _shared_buffer->begin() + _range._end );
+    typedef BasicSerializer<char_type, char_traits, RET> serializer_type;
+    try
+    {
+      return serializer_type::as(string_type(begin(), end()),
+                                 specification()->locale());
+    }
+    catch(BasicSerializerFailure failure)
+    {
+      throw ConversionError(::std::string(failure.what()),
+                            failure.getType(),
+                            inputLine(),
+                            inputColumn(),
+                            row(),
+                            column());
+    }
   }
 
   template<typename CHAR, typename TRAITS>
@@ -282,62 +272,4 @@ namespace csv
     }
     return ret;
   }
-
-
-
-  template<typename CHAR, typename TRAITS, typename TARGET>
-  template<typename ITER>
-  typename BasicSerializer<CHAR, TRAITS, TARGET>::return_type
-  BasicSerializer<CHAR, TRAITS, TARGET>::as(const cell_type        & cell,
-                                            ITER                     begin, 
-                                            ITER                     end)
-  {
-    stream_type ss(string_type(begin,end));
-    return_type value;
-    ss.imbue(cell.specification()->locale());
-    ss >> value;
-    if(ss.fail()) 
-    {
-      ::std::type_index ti(typeid(TARGET));
-      throw 
-        ConversionError(::std::string("Cannot convert cell content ") + 
-                        ti.name(),
-                        ti,
-                        cell.inputLine(),
-                        cell.inputColumn(),
-                        cell.row(),
-                        cell.column());
-    }
-    while(!ss.eof())
-    {
-      int ch = ss.get();
-      if(ss.eof()) break;
-      if(ch != ' ' && ch != '\t') 
-      {
-        ::std::type_index ti(typeid(TARGET));
-        throw 
-          ConversionError(::std::string("Cannot convert cell to type ") + 
-                          ti.name(),
-                          ti,
-                          cell.inputLine(),
-                          cell.inputColumn(),
-                          cell.row(),
-                          cell.column());
-      }
-    }
-    return value;
-  }
-
-  template<typename CHAR, typename TRAITS>
-  template<typename ITER>
-  typename 
-  BasicSerializer<CHAR, TRAITS, std::basic_string<CHAR, TRAITS> >::string_type
-  BasicSerializer<CHAR, TRAITS, std::basic_string<CHAR, TRAITS> >::
-  as(const cell_type        & cell,
-     ITER                     begin, 
-     ITER                     end)
-  {
-    return string_type(begin,end);
-  }
-
 } // namespace 
