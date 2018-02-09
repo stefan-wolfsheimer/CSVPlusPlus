@@ -32,7 +32,7 @@ either expressed or implied, of the FreeBSD Project.
 #include <catch.hpp>
 #include <csv/specification.h>
 #include <locale>
-
+#include <sstream>
 
 template<typename CharT>
 class DecimalSeparator : public std::numpunct<CharT>
@@ -56,7 +56,7 @@ TEST_CASE("CreateDefaultSpecification", "[csv_specification]")
 {
   csv::Specification spec;
   REQUIRE_FALSE( spec.hasHeader());
-  REQUIRE_FALSE( spec.hasUsingEmptyLines());
+  REQUIRE_FALSE( spec.isUsingEmptyLines());
   REQUIRE      ( spec.isSeparator(','));
   REQUIRE      ( spec.defaultSeparator() == ',');
   REQUIRE_FALSE( spec.isSeparator(' '));
@@ -72,7 +72,7 @@ TEST_CASE("CreateDefaultWcharSpecification", "[csv_specification]")
 {
   csv::WSpecification spec;
   REQUIRE_FALSE( spec.hasHeader());
-  REQUIRE_FALSE( spec.hasUsingEmptyLines());
+  REQUIRE_FALSE( spec.isUsingEmptyLines());
   REQUIRE      ( spec.isSeparator(','));
   REQUIRE_FALSE( spec.isSeparator(' '));
   REQUIRE_FALSE( spec.isSeparator(';'));
@@ -100,14 +100,14 @@ TEST_CASE("ConstructionWithUsingEmptyLines", "[csv_specification]")
 {
   REQUIRE(csv::Specification()
           .withUsingEmptyLines()
-          .hasUsingEmptyLines());
+          .isUsingEmptyLines());
   REQUIRE_FALSE(csv::Specification()
                 .withUsingEmptyLines()
                 .withoutUsingEmptyLines()
-                .hasUsingEmptyLines());
+                .isUsingEmptyLines());
   REQUIRE_FALSE(csv::Specification()
                 .withoutUsingEmptyLines()
-                .hasUsingEmptyLines());
+                .isUsingEmptyLines());
 }
 
 TEST_CASE("ConstructionWithComment", "[csv_specification]")
@@ -151,16 +151,7 @@ TEST_CASE("ConstructionWithDecimalSeparator", "[csv_specification]")
 TEST_CASE("ConstructionWithoutSeparator", "[csv_specification]")
 {
   // no separator
-  csv::Specification no_sep = csv::Specification().withoutSeparator(',');
-  REQUIRE      ( no_sep.defaultSeparator() == '\0');
-  REQUIRE_FALSE( no_sep.isSeparator(','));
-  REQUIRE_FALSE( no_sep.isSeparator(';'));
-}
-
-TEST_CASE("ConstructionWithoutAllSeparators", "[csv_specification]")
-{
-  // no separator
-  csv::Specification no_sep = csv::Specification().withoutSeparator();
+  csv::Specification no_sep = csv::Specification().withSeparator("");
   REQUIRE      ( no_sep.defaultSeparator() == '\0');
   REQUIRE_FALSE( no_sep.isSeparator(','));
   REQUIRE_FALSE( no_sep.isSeparator(';'));
@@ -168,7 +159,7 @@ TEST_CASE("ConstructionWithoutAllSeparators", "[csv_specification]")
 
 TEST_CASE("ConstructionWithCommaSeparator", "[csv_specification]")
 {
-  csv::Specification comma_sep = csv::Specification().withSeparator(',');
+  csv::Specification comma_sep = csv::Specification().withSeparator(",");
   REQUIRE      ( comma_sep.defaultSeparator() == ',');
   REQUIRE      ( comma_sep.isSeparator(','));
   REQUIRE_FALSE( comma_sep.isSeparator(';'));
@@ -177,8 +168,7 @@ TEST_CASE("ConstructionWithCommaSeparator", "[csv_specification]")
 TEST_CASE("ConstructionWithSemicolonSeparator", "[csv_specification]")
 {
   csv::Specification semicolon_sep = csv::Specification()
-    .withoutSeparator(',')
-    .withSeparator(';');
+    .withSeparator(";");
   REQUIRE      (  semicolon_sep.defaultSeparator() == ';');
   REQUIRE_FALSE(  semicolon_sep.isSeparator(','));
   REQUIRE      (  semicolon_sep.isSeparator(';'));
@@ -187,10 +177,7 @@ TEST_CASE("ConstructionWithSemicolonSeparator", "[csv_specification]")
 TEST_CASE("ConstructionWithMultipleSeparators", "[csv_specification]")
 {
   csv::Specification multi_sep = csv::Specification()
-    .withoutSeparator() //clear all separators
-    .withSeparator(';')
-    .withSeparator(' ')
-    .withSeparator('\t');
+    .withSeparator("; \t");
   REQUIRE      ( multi_sep.defaultSeparator() == ';');
   REQUIRE_FALSE( multi_sep.isSeparator(','));
   REQUIRE(       multi_sep.isSeparator(';'));
@@ -200,30 +187,15 @@ TEST_CASE("ConstructionWithMultipleSeparators", "[csv_specification]")
 
 TEST_CASE("ConstructionSetAndUnsetSeparator", "[csv_specification]")
 {
-  REQUIRE_FALSE(csv::Specification()
-                .withSeparator(';')
-                .withSeparator(';')
-                .withoutSeparator(';')
-                .isSeparator(';'));
-
   REQUIRE( csv::Specification()
-                .withSeparator(';')
-                .withSeparator(';')
-                .withoutSeparator(';')
+                .withSeparator(",;")
                 .defaultSeparator() == ',');
 }
 
 TEST_CASE("ConstructionSetAndUnsetAllSeparators", "[csv_specification]")
 {
-  REQUIRE_FALSE(csv::Specification()
-                .withSeparator(';')
-                .withSeparator(';')
-                .withoutSeparator()
-                .isSeparator(';'));
   REQUIRE( csv::Specification()
-            .withSeparator(';')
-            .withSeparator(';')
-            .withoutSeparator()
+            .withSeparator("")
             .defaultSeparator() == '\0');
 }
 

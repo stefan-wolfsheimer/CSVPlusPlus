@@ -200,6 +200,7 @@ namespace csv
   BasicSpecification<CHAR, TRAITS>::withSeparator(const string_type & seps)
   {
     _separators.clear();
+    _default_separator = '\0';
     for(auto ch : seps)
     {
       for(auto item : _separators)
