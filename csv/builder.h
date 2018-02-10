@@ -35,6 +35,7 @@ either expressed or implied, of the FreeBSD Project.
 #include <string>
 #include <ostream>
 #include <type_traits>
+#include <typeinfo>
 #include "csv_common.h"
 #include "serializer.h"
 
@@ -56,6 +57,23 @@ public:
   virtual void parse(object_type & cls, const string_type & str, const::std::locale & locale) const = 0;
   virtual string_type getName() const = 0;
   virtual void streamOut(::std::ostream & ost, const object_type & obj) = 0;
+  virtual const std::type_info& getTypeInfo() const = 0;
+
+  template<typename T> T& bind(object_type & obj) const
+  {
+    T * ptr = (T*)bindMember(obj);
+    return (T&) *ptr;
+  }
+
+  template<typename T> const T& bind(const object_type & obj) const
+  {
+    const T * ptr = (const T*)bindMember(obj);
+    return (T&) *ptr;
+  }
+
+protected:
+  virtual void* bindMember(object_type & obj) const = 0;
+  virtual const void* bindMember(const object_type & obj) const = 0;
 };
 
 template<typename OBJECT, typename MEMBER, typename CHAR, typename TRAITS>
@@ -105,6 +123,22 @@ public:
   virtual void streamOut(::std::ostream & ost, const object_type & obj) override
   {
     ost << obj.*_pointerToMember;
+  }
+
+  const std::type_info& getTypeInfo() const override
+  {
+    return typeid(member_type);
+  }
+
+protected:
+  void* bindMember(object_type & obj) const override
+  {
+    return &(obj.*_pointerToMember);
+  }
+
+  const void* bindMember(const object_type & obj) const override
+  {
+    return &(obj.*_pointerToMember);
   }
 
 private:
