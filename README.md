@@ -64,6 +64,42 @@ Usage at a glance
   }
 ```
 
+### Object mapping
+```c++
+#include <vector>
+#include <csv/reader.h>
+#include <csv/object_reader.h>
+
+struct Planet
+{
+  int         index;
+  std::string name;
+  float       diameter;
+  float       mass;
+  float       orbital_period;
+  float       rotation_period;
+  Planet() : index(0), diameter(0.0f), mass(0.0f),
+             orbital_period(0.0f), rotation_period(0.0f) {}
+};
+
+std::vector<Planet> readCsv(std::istream & ist)
+{
+  auto planetBuilder = csv::Builder<Planet>()
+    .member<int>(&Planet::index, "Number", 0)
+    .member<std::string>(&Planet::name, "Name", "")
+    .member<float>(&Planet::diameter, "Diameter", 0.0)
+    .member<float>(&Planet::mass, "Mass", 0.0)
+    .member<float>(&Planet::orbital_period, "Orbital period", 0.0)
+    .member<float>(&Planet::rotation_period, "Rotation period", 0.0);
+
+  csv::ObjectReader<Planet> reader(planetBuilder,
+                                   ist,
+                                   csv::Specification().withHeader());
+  std::vector<Planet> planets(reader.begin(), reader.end());
+  return planets;
+}
+```
+
 
 Building examples and unit tests
 --------------------------------
@@ -152,14 +188,6 @@ All Exceptions are derived from `CsvException` which is derived from
 | `size_t`      | `index()`         | `CellOutOfRangeError` `DefinedCellOutOfRangeError`, `DuplicateColumnError`| The index of a column.                |
 | `size_t`      | `size()`          | `CellOutOfRangeError` `UndefinedColumnError` `DefinedCellOutOfRangeError` | The number of columns of the row.     |
 | `::std::type_index` | `typeIndex()` | `ConversionError`  | The target type when attempting to convert a cell to a C++ type |
-
-### The Row class 
-
-TODO more details 
-
-### The Cell class 
-
-TODO more details
 
 
 Implementation Details
